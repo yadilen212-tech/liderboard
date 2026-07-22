@@ -1,5 +1,5 @@
-import { ModulePlaceholder } from "@/components/dashboard/module-placeholder";
+import { ModuleTabs } from "@/components/dashboard/module-tabs";
 
 export default function ProfitLossPage() {
-  return <ModulePlaceholder slug="profit-loss" />;
+  return <ModuleTabs slug="profit-loss" />;
 }

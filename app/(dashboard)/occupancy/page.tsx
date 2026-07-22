@@ -1,5 +1,5 @@
-import { ModulePlaceholder } from "@/components/dashboard/module-placeholder";
+import { ModuleTabs } from "@/components/dashboard/module-tabs";
 
 export default function OccupancyPage() {
-  return <ModulePlaceholder slug="occupancy" />;
+  return <ModuleTabs slug="occupancy" />;
 }

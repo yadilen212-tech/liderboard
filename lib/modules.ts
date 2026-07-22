@@ -1,4 +1,30 @@
-import { BedDouble, LineChart, Receipt, ShoppingBag, Users, type LucideIcon } from "lucide-react";
+import {
+  BarChart3,
+  BedDouble,
+  LineChart,
+  Microscope,
+  Receipt,
+  ShoppingBag,
+  Table2,
+  Users,
+  type LucideIcon,
+} from "lucide-react";
+
+export type ModuleTabId = "graficos" | "datos" | "analisis";
+
+export interface ModuleTab {
+  id: ModuleTabId;
+  label: string;
+  icon: LucideIcon;
+}
+
+/**
+ * Shared tab definitions. Per the design, every module exposes Gráficos + Datos;
+ * only Pérdidas y Ganancias adds the deeper Análisis view.
+ */
+const TAB_GRAFICOS: ModuleTab = { id: "graficos", label: "Gráficos", icon: BarChart3 };
+const TAB_DATOS: ModuleTab = { id: "datos", label: "Datos", icon: Table2 };
+const TAB_ANALISIS: ModuleTab = { id: "analisis", label: "Análisis", icon: Microscope };
 
 export interface DashboardModule {
   /** Route segment, e.g. "profit-loss". */
@@ -8,6 +34,8 @@ export interface DashboardModule {
   /** Header title and breadcrumb leaf. */
   title: string;
   icon: LucideIcon;
+  /** Tabs shown inside the module, in display order. First tab is the default. */
+  tabs: ModuleTab[];
 }
 
 export const MODULES: DashboardModule[] = [
@@ -16,24 +44,28 @@ export const MODULES: DashboardModule[] = [
     label: "Pérdidas y Ganancias",
     title: "Pérdidas y Ganancias",
     icon: LineChart,
+    tabs: [TAB_GRAFICOS, TAB_DATOS, TAB_ANALISIS],
   },
   {
     slug: "salaries",
     label: "Sueldos por Áreas",
     title: "Sueldos por Áreas",
     icon: Users,
+    tabs: [TAB_GRAFICOS, TAB_DATOS],
   },
   {
     slug: "occupancy",
     label: "Ocupaciones",
     title: "Ocupaciones · Análisis Hotelero",
     icon: BedDouble,
+    tabs: [TAB_GRAFICOS, TAB_DATOS],
   },
   {
     slug: "sales",
     label: "Ventas",
     title: "Ventas · Análisis Comercial",
     icon: ShoppingBag,
+    tabs: [TAB_GRAFICOS, TAB_DATOS],
   },
 ];
 
