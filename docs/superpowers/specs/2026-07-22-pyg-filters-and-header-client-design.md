@@ -129,6 +129,27 @@ Add to the `@theme` block:
 Chart/table/analysis content; export logic; real Excel parsing; filter state/persistence;
 non-PyG modules keep their current behavior (no filter section, no client block).
 
+## Addendum — Datos action bar (`DatosToolbar`)
+
+Added after the FILTROS row for **PyG › Datos only** (the design's two-bar Datos layout).
+Visual only, all state UI-local. Source: the Datos action bar in `Dashboard LiderPlus.dc.html`.
+
+**`components/profit-loss/datos-toolbar.tsx`** (client) — an edge-to-edge band on the
+**sunken** tone (`bg-surface-sunken`, bottom hairline), `px-7 py-2.5`, mounted in
+`module-tabs.tsx` via `isPyg && activeTab.id === "datos"`.
+
+- **Left — "cuentas mayores" filters:** `SegmentedControl` (bar) Todos/Ingresos/Costos ·
+  "Ocultar ceros" toggle (eye-off) · divider · "Expandir" micro-label + level buttons
+  1/2/3/4/Todo (single active). Interactive but purely visual — no upload gating.
+- **Right — Excel actions:** **Cargar Excel / ZIP** (primary; single button with a
+  placeholder `onClick`, ready to wire) · **Descargar Excel** menu (self-managed popover +
+  backdrop) with two stub rows — "Excel con tus datos" and "Plantilla vacía" (template
+  export handled later) · **info** icon button with a dark hover/click tooltip listing the
+  accepted files.
+
+Out of scope: real upload/parse, the enable-on-load state machine, the `datosCCTabsOn`
+cost-center sub-tabs, and the data table itself.
+
 ## Docs to update at the end
 
 - `CLAUDE.md` — minimal: note the `components/profit-loss/` layer and that PyG owns a

@@ -42,8 +42,15 @@ components/ui/           primitivas reutilizables (Button, Dropdown, SegmentedCo
 components/dashboard/    shell: sidebar, header, tabs de módulo
 components/profit-loss/  composiciones específicas de Pérdidas y Ganancias
 lib/modules.ts           registro de módulos (única fuente de verdad de la navegación)
+lib/format.ts            helpers de formato de toda la app (moneda EC, número, porcentaje)
+lib/date.ts              etiquetas de calendario compartidas (meses en español)
 docs/superpowers/specs/  specs de diseño aprobados
 ```
+
+Las **funciones de formato son de toda la app**: cualquier número que se muestre al
+usuario pasa por `lib/format.ts` (`formatCurrency` → USD de Ecuador con símbolo `$`) para
+que todo el panel hable el mismo idioma. Los módulos nuevos las reutilizan en vez de
+formatear localmente.
 
 ## Estado actual
 
@@ -65,4 +72,21 @@ Los módulos y su navegación salen de `lib/modules.ts`. Cada módulo expone las
   (botón listo para conectar), menú **Descargar Excel** (Excel con tus datos · Plantilla
   vacía) e ícono de **información** con los formatos aceptados. Todo visual; estado local.
 
-El contenido de cada vista (gráficos, tablas, análisis) aún está en construcción.
+**Tabla de Datos de PyG** (`DatosView` en la tab Datos) — el estado de resultados editable:
+
+- Componente **controlado por props y listo para el Excel**: sin datos muestra un **estado
+  vacío** ("Carga un Excel…"); cuando llegan filas, arma la grilla. La carga/descarga real
+  del Excel es trabajo posterior.
+- Grilla con **árbol de cuentas** (expandir/colapsar), 12 meses + **Total**, **columnas
+  ordenables**, negativos en rojo, ceros como `–` y marca de esquina en celdas con comentario.
+- **Edición de celdas**: solo las **cuentas de movimiento** (hoja del árbol) editan su valor;
+  las **cuentas padre** se calculan desde sus movimientos y solo admiten comentario. Todo
+  local/visual por ahora.
+- **Pestañas de centro de costos** sobre la grilla — hoy con datos **mock** (siempre visibles
+  como vista previa); su aparición real dependerá de detectar centros en el Excel (pendiente).
+- Rendimiento: filas memoizadas (`React.memo`), derivaciones con `useMemo` y
+  `content-visibility` en las filas; sin virtualización (aún no hace falta).
+
+Los importes usan el **formato de moneda de Ecuador** (`$`) vía `lib/format.ts`.
+
+El contenido de Gráficos y Análisis aún está en construcción.

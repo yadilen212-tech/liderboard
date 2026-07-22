@@ -41,6 +41,27 @@ CI (`.github/workflows/ci.yml`) runs three independent jobs on PRs and pushes to
 - TypeScript is `strict`; import alias `@/*` maps to the repo root (e.g.
   `@/lib/modules`).
 
+## Code conventions
+
+- **Prefer reusable functions.** Extract anything general-purpose (formatters, constants,
+  pure utils) into `lib/` and import via `@/*` — don't re-implement the same logic across
+  components. Amounts format through `lib/format.ts` (`formatCurrency` = Ecuador USD `$`),
+  month labels via `lib/date.ts`. Only helpers tied to one module's domain stay in that
+  module.
+- **Reuse primitives + tokens first.** Reach for `components/ui/*` and the `@theme`
+  color/font tokens before writing ad-hoc markup or hardcoding hex.
+- **Prop-driven components.** Pass data in so a component fills from real data later, and
+  render a sensible empty state when it's absent (Excel-sourced views do this today).
+- **Small client boundary.** Server Components by default; add `"use client"` only where
+  local state/interactivity needs it.
+- **Optimize for performance by default.** Keep renders cheap: `React.memo` list/row
+  components with stable keys and callbacks (`useCallback`), wrap expensive derivations in
+  `useMemo`, and lean on CSS (`content-visibility`) over JS where it fits. Reach for
+  heavier tooling (e.g. row virtualization) only when data volumes justify it — don't add
+  it speculatively.
+- **Match the surrounding code.** Follow existing naming, style, and comment density;
+  comments explain the _why_. UI copy in Spanish, identifiers/slugs in English.
+
 ## Architecture
 
 Next.js **App Router**. Server Components by default — keep the client boundary
@@ -66,7 +87,10 @@ markup. Module-specific compositions live in `components/<module>/` (currently
 `ModuleTabs` renders a module's toolbar between the tabs and the content panel when one
 exists (only PyG today); `ActiveClient` shows the client name in the header for PyG.
 Filter lists sourced from an uploaded Excel (cuentas, centros de costo) render empty
-states until data loads.
+states until data loads. PyG › Datos owns `DatosView` — the prop-driven, Excel-ready
+Estado de Resultados table (account tree, sortable months + Total, cell edit/comment)
+plus a mock cost-center tab strip; it renders an empty state until real data arrives.
+Only leaf (movement) accounts edit their value; parent accounts comment-only.
 
 **Design tokens.** Colors and fonts are defined once in `app/globals.css`'s
 `@theme` block (`brand`, `brand-soft`, `canvas`, `surface`, `border`, `ink`,

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { ComingSoon } from "@/components/dashboard/coming-soon";
 import { DatosToolbar } from "@/components/profit-loss/datos-toolbar";
+import { DatosView } from "@/components/profit-loss/datos-view";
 import { PygToolbar } from "@/components/profit-loss/pyg-toolbar";
 import { Semaforo } from "@/components/profit-loss/semaforo";
 import { cn } from "@/lib/cn";
@@ -63,7 +64,11 @@ export function ModuleTabs({ slug }: { slug: string }) {
         aria-labelledby={`tab-${mod.slug}-${activeTab.id}`}
         className="flex-1 overflow-auto bg-canvas"
       >
-        <ComingSoon mod={mod} tab={activeTab} />
+        {isPyg && activeTab.id === "datos" ? (
+          <DatosView />
+        ) : (
+          <ComingSoon mod={mod} tab={activeTab} />
+        )}
       </div>
     </div>
   );

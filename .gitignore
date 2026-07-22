@@ -43,3 +43,6 @@ next-env.d.ts
 # Playwright
 .playwright-cli
 .context
+
+
+/superpowers/

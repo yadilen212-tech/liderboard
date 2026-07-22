@@ -30,7 +30,12 @@ persistence, or cost-center detection.
 - **Table data now:** empty state. The component is complete underneath (tree, sort,
   editing); "empty" is just the no-data branch. Running app shows the empty state.
 - **Interactions now:** expand/collapse + sort + **cell edit/comment** editor, all
-  visual and local. No persistence.
+  visual and local. No persistence. **Only movement accounts (leaf rows) edit their
+  value**; parent accounts derive theirs from their movements, so they are comment-only
+  (the editor shows a read-only value). The result row is fully read-only.
+- **Formatting is app-wide:** amounts render through `lib/format.ts` (`formatCurrency` =
+  Ecuador USD with the `$` symbol); month labels come from `lib/date.ts`. Modules reuse
+  these instead of formatting locally; only domain-specific helpers stay in the module.
 - **Cost-center tabs now:** always visible with **mock** data + a `FUTURE WORK: detection`
   comment. The strip's real visibility gate (data has cost centers) is deferred.
 - **Performance:** `React.memo` rows/cells + `useMemo` derivations + `content-visibility`.
@@ -116,9 +121,11 @@ edit re-renders one row, not the whole table.
 
 ### `cell-editor.tsx`
 
-Lightweight popover anchored to the clicked cell: numeric value input + comment
-textarea + Guardar / Cancelar. Local/visual only — writes to a local override map keyed
-by `${rowCode}:${monthIndex}`; no persistence. (Future: writes back to the Excel model.)
+Lightweight popover anchored to the clicked cell: value input + comment textarea +
+Guardar / Cancelar. For a movement account the value input is editable (with a `$`
+adornment); for a parent account it is a **read-only** display with a note, and only the
+comment can change. Local/visual only — writes to a local override map keyed by
+`${rowCode}:${monthIndex}`; no persistence. (Future: writes back to the Excel model.)
 Closes on backdrop click / Escape.
 
 ### `cost-center-tabs.tsx`
@@ -164,9 +171,18 @@ changes behavior.
 
 ## Tokens — `app/globals.css`
 
-None required — `surface-header`, `border-soft`, `zero`, `positive`, `negative`,
-`warning` already exist. Add one token only if it removes repeated hardcoding:
-`--color-ink-soft: #334155` (table body text). Otherwise no `@theme` change.
+Added `--color-ink-soft: #334155` (table body text) to avoid repeating the hex; the rest
+(`surface-header`, `border-soft`, `zero`, `positive`, `negative`, `warning`) already
+existed.
+
+## Shared helpers — `lib/`
+
+- `lib/format.ts` — `formatCurrency` (Ecuador USD, `$`, sign ahead of symbol),
+  `formatNumber`, `formatPercent`. App-wide; every module formats through these.
+- `lib/date.ts` — `MONTHS_SHORT_ES` (["Ene"…"Dic"]).
+
+The Datos layer consumes both; its own `formatAmount` (en-dash for empty/zero) and the
+tree flatten/sort stay module-local since they are domain-specific.
 
 ## Reuse map
 
