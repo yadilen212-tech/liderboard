@@ -14,12 +14,14 @@
 
   --color-surface-header: #fafbfc;
   --color-surface-muted: #f8fafc;
+  --color-surface-sunken: #f3f6f9;
   --color-border-soft: #edf1f5;
   --color-border-faint: #f1f4f7;
 
   --color-zero: #c2cbd5;
   --color-positive: #16a34a;
   --color-negative: #dc2626;
+  --color-warning: #d97706;
 
   --color-chip: #eef2f6;
   --color-chip-border: #dce3eb;

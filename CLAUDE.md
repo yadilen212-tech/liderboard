@@ -54,11 +54,19 @@ survives switching modules without any global store or localStorage. Each module
 a static page at `app/(dashboard)/<slug>/page.tsx`.
 
 **Module registry is the single source of truth.** `lib/modules.ts` exports the
-ordered `MODULES` array (`{ slug, label, title, icon }`) plus `DEFAULT_MODULE` and
-`findModuleBySlug()`. Both the sidebar nav and the header breadcrumb/title derive
+ordered `MODULES` array (`{ slug, label, title, icon, tabs }`) plus `DEFAULT_MODULE`
+and `findModuleBySlug()`. Both the sidebar nav and the header breadcrumb/title derive
 from it — there is no duplicated module list. **To add a module:** add an entry to
 `MODULES` and create the matching `app/(dashboard)/<slug>/page.tsx`. Route slugs are
 English; the Spanish name goes in `label`/`title`.
+
+**Components.** Reusable primitives live in `components/ui/` — prefer them over ad-hoc
+markup. Module-specific compositions live in `components/<module>/` (currently
+`components/profit-loss/`: the PyG filter toolbar + "Comparar" box, visual-only).
+`ModuleTabs` renders a module's toolbar between the tabs and the content panel when one
+exists (only PyG today); `ActiveClient` shows the client name in the header for PyG.
+Filter lists sourced from an uploaded Excel (cuentas, centros de costo) render empty
+states until data loads.
 
 **Design tokens.** Colors and fonts are defined once in `app/globals.css`'s
 `@theme` block (`brand`, `brand-soft`, `canvas`, `surface`, `border`, `ink`,

@@ -1,36 +1,63 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# liderboard
 
-## Getting Started
+**LiderPlus** — panel financiero para una firma contable. La interfaz está en **español**;
+el código (identificadores, slugs de rutas) en **inglés**. Es una app **solo para escritorio**
+(sin capa responsive/móvil).
 
-First, run the development server:
+## Stack
+
+- [Next.js](https://nextjs.org) 16 — App Router, Server Components por defecto.
+- Tailwind CSS v4 (CSS-first; el tema vive en `app/globals.css`, no hay `tailwind.config.js`).
+- [oxc](https://oxc.rs) para lint y formato (`oxlint` / `oxfmt`) — no ESLint/Prettier.
+- Fuentes IBM Plex Sans/Mono vía `next/font`; iconos de `lucide-react`.
+- Gestor de paquetes: **pnpm**.
+
+## Puesta en marcha
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+pnpm install
+pnpm dev            # servidor de desarrollo en http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Scripts
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+| Tarea                            | Comando          |
+| -------------------------------- | ---------------- |
+| Servidor de desarrollo (:3000)   | `pnpm dev`       |
+| Build de producción (type-check) | `pnpm build`     |
+| Servir el build                  | `pnpm start`     |
+| Lint                             | `pnpm lint`      |
+| Lint + autofix                   | `pnpm lint:fix`  |
+| Formato                          | `pnpm fmt`       |
+| Verificar formato (CI)           | `pnpm fmt:check` |
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+No hay runner de tests configurado.
 
-## Learn More
+## Estructura
 
-To learn more about Next.js, take a look at the following resources:
+```
+app/(dashboard)/        shell persistente (sidebar + header) y páginas de cada módulo
+components/ui/           primitivas reutilizables (Button, Dropdown, SegmentedControl,
+                         Toolbar, EmptyState, FilterChip, Checkbox, Select, …)
+components/dashboard/    shell: sidebar, header, tabs de módulo
+components/profit-loss/  composiciones específicas de Pérdidas y Ganancias
+lib/modules.ts           registro de módulos (única fuente de verdad de la navegación)
+docs/superpowers/specs/  specs de diseño aprobados
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Estado actual
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Los módulos y su navegación salen de `lib/modules.ts`. Cada módulo expone las vistas
+**Gráficos** y **Datos**; **Pérdidas y Ganancias** añade además **Análisis**.
 
-## Deploy on Vercel
+**Pérdidas y Ganancias (PyG)** ya tiene su capa de filtros (solo visual, sin lógica de datos):
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- El **nombre del cliente activo** se muestra en el header del módulo (`ActiveClient`),
+  con estado vacío mientras no se carga un Excel.
+- **Sección de filtros** bajo las tabs: cuenta contable, nivel, centro de costos,
+  granularidad (Ver por) y período. La lista de cuentas y los centros de costo se leen del
+  Excel que se sube, por lo que hoy muestran un **estado vacío** listo para poblarse.
+- **Recuadro "Comparar por"** en Gráficos y Análisis (colapsable, cerrado por defecto).
+- Leyenda de **semáforo** en la fila de tabs.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+El contenido de cada vista (gráficos, tablas, análisis) aún está en construcción.

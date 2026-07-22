@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronLeft, ChevronRight, FileSpreadsheet, Hotel } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
@@ -105,22 +105,7 @@ export function DashboardSidebar() {
 
       {!collapsed && (
         <div className="mt-auto p-4">
-          <div className="rounded-[11px] border border-border bg-[#fafbfc] p-3.5">
-            <div className="mb-1.5 flex items-center gap-2 text-[12.5px] font-semibold text-brand">
-              <Hotel size={15} />
-              <span>Cliente activo</span>
-            </div>
-            <div className="text-[12.5px] font-semibold leading-snug text-[#334155]">
-              Sin cliente seleccionado
-            </div>
-            <div className="mt-1.5 flex items-center gap-1.5 text-[11px] text-faint">
-              <FileSpreadsheet size={13} />
-              <span>Datos de ejemplo</span>
-            </div>
-          </div>
-          <div className="pt-3.5 text-center text-[10.5px] text-[#b4bec9]">
-            © 2026 LiderPlus · v0.1
-          </div>
+          <div className="text-center text-[10.5px] text-faintest">© 2026 LiderPlus · v0.1</div>
         </div>
       )}
     </aside>
