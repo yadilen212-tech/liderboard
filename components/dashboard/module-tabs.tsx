@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { ComingSoon } from "@/components/dashboard/coming-soon";
+import { DatosToolbar } from "@/components/profit-loss/datos-toolbar";
 import { PygToolbar } from "@/components/profit-loss/pyg-toolbar";
 import { Semaforo } from "@/components/profit-loss/semaforo";
 import { cn } from "@/lib/cn";
@@ -54,6 +55,7 @@ export function ModuleTabs({ slug }: { slug: string }) {
       </div>
 
       {isPyg && <PygToolbar activeTab={activeTab.id} />}
+      {isPyg && activeTab.id === "datos" && <DatosToolbar />}
 
       <div
         id={`panel-${mod.slug}`}
