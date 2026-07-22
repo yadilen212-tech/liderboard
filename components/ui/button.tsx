@@ -1,0 +1,62 @@
+import type { ButtonHTMLAttributes, ReactNode } from "react";
+import { cn } from "@/lib/cn";
+
+type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
+type ButtonSize = "sm" | "md";
+
+interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+  variant?: ButtonVariant;
+  size?: ButtonSize;
+  /** Leading icon node, e.g. `<Download size={15} />`. */
+  icon?: ReactNode;
+  /** Trailing icon node, e.g. a chevron. */
+  trailingIcon?: ReactNode;
+  /** Square button that renders only its icon (children are ignored). */
+  iconOnly?: boolean;
+}
+
+const VARIANTS: Record<ButtonVariant, string> = {
+  primary: "bg-brand text-white hover:bg-brand-hover",
+  secondary: "border border-border bg-surface text-ink hover:bg-canvas",
+  ghost: "text-muted hover:bg-canvas hover:text-brand",
+  danger: "text-negative hover:bg-negative/10",
+};
+
+const SIZES: Record<ButtonSize, string> = {
+  sm: "h-8 gap-1.5 px-3 text-xs",
+  md: "h-[38px] gap-2 px-[15px] text-[13px]",
+};
+
+const ICON_ONLY_SIZES: Record<ButtonSize, string> = {
+  sm: "h-8 w-8",
+  md: "h-[38px] w-[38px]",
+};
+
+export function Button({
+  variant = "primary",
+  size = "md",
+  icon,
+  trailingIcon,
+  iconOnly = false,
+  type = "button",
+  className,
+  children,
+  ...props
+}: ButtonProps) {
+  return (
+    <button
+      type={type}
+      className={cn(
+        "inline-flex items-center justify-center rounded-[9px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+        iconOnly ? ICON_ONLY_SIZES[size] : SIZES[size],
+        VARIANTS[variant],
+        className,
+      )}
+      {...props}
+    >
+      {icon}
+      {!iconOnly && children}
+      {!iconOnly && trailingIcon}
+    </button>
+  );
+}

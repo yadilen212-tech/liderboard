@@ -10,6 +10,19 @@
   --color-ink: #1e293b;
   --color-muted: #64748b;
   --color-faint: #94a3b8;
+  --color-faintest: #b4bec9;
+
+  --color-surface-header: #fafbfc;
+  --color-surface-muted: #f8fafc;
+  --color-border-soft: #edf1f5;
+  --color-border-faint: #f1f4f7;
+
+  --color-zero: #c2cbd5;
+  --color-positive: #16a34a;
+  --color-negative: #dc2626;
+
+  --color-chip: #eef2f6;
+  --color-chip-border: #dce3eb;
 
   --font-sans: var(--font-ibm-plex-sans), system-ui, sans-serif;
   --font-mono: var(--font-ibm-plex-mono), ui-monospace, monospace;
