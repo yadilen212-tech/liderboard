@@ -92,11 +92,14 @@ markup. Module-specific compositions live in `components/<module>/` (currently
 exists (only PyG today); `ActiveClient` shows the client name in the header for PyG.
 Filter lists sourced from an uploaded Excel (cuentas, centros de costo) render empty
 states until data loads. PyG › Datos now loads real Excel data: `lib/profit-loss/`
-holds the pure parse/derive layer plus Dexie (IndexedDB) persistence, and
+holds the pure parse/derive/export layer plus Dexie (IndexedDB) persistence, and
 `PygDataProvider` — mounted in the dashboard layout — shares `dataset`/`edits`/
 `frequency` between the header (`ActiveClient`) and the Datos content. `DatosView`
 renders the Estado de Resultados table (account tree, sortable months + Total, cell
-edit/comment); editing/commenting is monthly-view-only. Only leaf (movement) accounts
+edit/comment); editing/commenting is monthly-view-only. The Datos toolbar downloads
+the edited state or a seeded blank template via `exceljs` (`export.ts`, dynamic
+import); the "con tus datos" file re-uploads cleanly and restores its comments from a
+hidden metadata sheet. Only leaf (movement) accounts
 edit their value; parent accounts comment-only. The cost-center tab strip is gated off
 (not rendered) until cost-center support lands — consolidated files are rejected at
 parse time.

@@ -32,6 +32,20 @@ describe("replaceDataset", () => {
     expect((await db.datasets.toArray())[0].id).toBe("b");
     expect(await db.edits.count()).toBe(0);
   });
+
+  it("seeds imported comments as comment-only edits on the new dataset", async () => {
+    await replaceDataset(dataset("a"), [{ code: "4", monthIndex: 0, comment: "Nota importada" }]);
+    const stored = await db.edits.toArray();
+    expect(stored).toHaveLength(1);
+    expect(stored[0]).toMatchObject({
+      datasetId: "a",
+      code: "4",
+      monthIndex: 0,
+      comment: "Nota importada",
+    });
+    expect(stored[0].value).toBeUndefined();
+    expect(stored[0].updatedAt).toBeGreaterThan(0);
+  });
 });
 
 describe("saveCellEdit", () => {

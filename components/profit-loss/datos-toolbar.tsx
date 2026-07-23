@@ -9,7 +9,7 @@ import {
   Loader2,
   Upload,
 } from "lucide-react";
-import { type ReactNode, useRef, useState } from "react";
+import { type ReactNode, useCallback, useRef, useState } from "react";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { cn } from "@/lib/cn";
 import { usePygData } from "./pyg-data-provider";
@@ -151,9 +151,46 @@ function LevelButton({
   );
 }
 
-/** "Descargar Excel" split into a menu of two export options. Actions are stubs. */
+type ExportKind = "data" | "template";
+
+/**
+ * "Descargar Excel": exports the edited Estado de Resultados or a blank template seeded
+ * with the current accounts. Both build the workbook via a dynamic import of the exceljs
+ * layer (kept out of the initial bundle), then trigger a browser download.
+ */
 function DownloadMenu() {
+  const { dataset, edits } = usePygData();
   const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState<ExportKind | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  const runExport = useCallback(
+    async (kind: ExportKind) => {
+      if (busy || (kind === "data" && !dataset)) {
+        return;
+      }
+      setBusy(kind);
+      setFailed(false);
+      try {
+        const [exportMod, { downloadBlob }] = await Promise.all([
+          import("@/lib/profit-loss/export"),
+          import("@/lib/download"),
+        ]);
+        const workbook =
+          kind === "data" && dataset
+            ? exportMod.buildPygWorkbook(dataset, edits)
+            : exportMod.buildBlankTemplate(dataset);
+        const blob = await exportMod.workbookToBlob(workbook);
+        downloadBlob(blob, exportMod.pygExportFilename(dataset, kind));
+        setOpen(false);
+      } catch {
+        setFailed(true);
+      } finally {
+        setBusy(null);
+      }
+    },
+    [busy, dataset, edits],
+  );
 
   return (
     <div className="relative">
@@ -186,12 +223,22 @@ function DownloadMenu() {
             icon={<FileSpreadsheet size={17} className="text-brand" />}
             title="Excel con tus datos"
             description="El estado con los valores y comentarios actuales"
+            onClick={() => runExport("data")}
+            disabled={!dataset}
+            busy={busy === "data"}
           />
           <DownloadItem
             icon={<FilePlus2 size={17} className="text-muted" />}
             title="Plantilla vacía"
-            description="Archivo .xlsx en blanco para llenar y volver a cargar"
+            description="Tus cuentas con los montos en blanco, para llenar y recargar"
+            onClick={() => runExport("template")}
+            busy={busy === "template"}
           />
+          {failed && (
+            <p className="px-[11px] pt-1.5 text-[11.5px] leading-snug text-negative">
+              No se pudo generar el Excel. Intenta de nuevo.
+            </p>
+          )}
         </div>
       )}
     </div>
@@ -202,20 +249,28 @@ function DownloadItem({
   icon,
   title,
   description,
+  onClick,
+  disabled = false,
+  busy = false,
 }: {
   icon: ReactNode;
   title: string;
   description: string;
+  onClick: () => void;
+  disabled?: boolean;
+  busy?: boolean;
 }) {
   return (
     <button
       type="button"
-      onClick={() => {
-        // TODO: wire up Excel download (template export handled later)
-      }}
-      className="flex w-full items-start gap-2.5 rounded-[9px] px-[11px] py-2.5 text-left transition-colors hover:bg-canvas"
+      role="menuitem"
+      disabled={disabled || busy}
+      onClick={onClick}
+      className="flex w-full items-start gap-2.5 rounded-[9px] px-[11px] py-2.5 text-left transition-colors hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent"
     >
-      <span className="mt-px shrink-0">{icon}</span>
+      <span className="mt-px shrink-0">
+        {busy ? <Loader2 size={17} className="animate-spin text-brand" /> : icon}
+      </span>
       <span className="flex flex-col gap-0.5">
         <span className="text-[13px] font-semibold text-ink">{title}</span>
         <span className="text-[11.5px] leading-snug text-faint">{description}</span>

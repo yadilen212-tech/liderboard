@@ -8,10 +8,11 @@
  * so the library stays out of the initial bundle.
  */
 import * as XLSX from "xlsx";
-import { MONTHS_SHORT_ES } from "@/lib/date";
+import { MONTHS_FULL_ES, MONTHS_SHORT_ES } from "@/lib/date";
 import { buildAccountTree, computeResult, computeRollups } from "./derive";
 import { PygParseError } from "./errors";
-import type { AccountRow, Frequency, PygDataset } from "./types";
+import { META_SHEET_NAME, metaRowsToComments } from "./excel-metadata";
+import type { AccountRow, Frequency, ImportedComment, PygDataset, PygParseResult } from "./types";
 
 type Cell = string | number | null;
 
@@ -19,21 +20,6 @@ const ACCOUNT_CODE = /^\d+(\.\d+)*$/;
 const RESULT_NAME = /utilidad|p[ée]rdida/i;
 const DATE_RANGE = /Desde el (\d{2})\/(\d{2})\/(\d{4}) hasta el (\d{2})\/(\d{2})\/(\d{4})/i;
 const COST_CENTER_LINE = /^Centro de Costo:\s*(.+)$/i;
-/** Full month names, index-aligned with MONTHS_SHORT_ES. Accent-insensitive matching. */
-const MONTHS_FULL_ES = [
-  "enero",
-  "febrero",
-  "marzo",
-  "abril",
-  "mayo",
-  "junio",
-  "julio",
-  "agosto",
-  "septiembre",
-  "octubre",
-  "noviembre",
-  "diciembre",
-];
 /** Tolerance for float drift when validating file sums (one cent). */
 const SUM_TOLERANCE = 0.011;
 
@@ -44,13 +30,14 @@ interface ColumnMap {
   width: 12 | 1;
 }
 
-export async function parsePygFile(file: File): Promise<PygDataset> {
+export async function parsePygFile(file: File): Promise<PygParseResult> {
   const buffer = await file.arrayBuffer();
   return parsePygWorkbook(buffer, file.name);
 }
 
-export function parsePygWorkbook(data: ArrayBuffer, fileName: string): PygDataset {
-  const grid = readFirstSheet(data);
+export function parsePygWorkbook(data: ArrayBuffer, fileName: string): PygParseResult {
+  const workbook = readWorkbook(data);
+  const grid = readGrid(workbook, workbook.SheetNames[0]);
   const firstDataRow = findFirstDataRow(grid);
   if (firstDataRow === -1) {
     throw new PygParseError("no-accounts");
@@ -69,7 +56,7 @@ export function parsePygWorkbook(data: ArrayBuffer, fileName: string): PygDatase
   }
   warnings.push(...validateAgainstFile(accounts, resultFromFile, columns));
 
-  return {
+  const dataset: PygDataset = {
     id: crypto.randomUUID(),
     fileName,
     uploadedAt: Date.now(),
@@ -82,22 +69,54 @@ export function parsePygWorkbook(data: ArrayBuffer, fileName: string): PygDatase
     resultFromFile,
     warnings,
   };
+  return { dataset, comments: readComments(workbook, accounts, columns.width) };
 }
 
-function readFirstSheet(data: ArrayBuffer): Cell[][] {
+function readWorkbook(data: ArrayBuffer): XLSX.WorkBook {
   try {
-    const workbook = XLSX.read(data);
-    const sheet = workbook.Sheets[workbook.SheetNames[0]];
-    if (!sheet) {
-      throw new PygParseError("invalid-file");
-    }
-    return XLSX.utils.sheet_to_json<Cell[]>(sheet, { header: 1, raw: true, defval: null });
-  } catch (error) {
-    if (error instanceof PygParseError) {
-      throw error;
-    }
+    return XLSX.read(data);
+  } catch {
     throw new PygParseError("invalid-file");
   }
+}
+
+function readGrid(workbook: XLSX.WorkBook, sheetName: string | undefined): Cell[][] {
+  const sheet = sheetName ? workbook.Sheets[sheetName] : undefined;
+  if (!sheet) {
+    throw new PygParseError("invalid-file");
+  }
+  try {
+    return XLSX.utils.sheet_to_json<Cell[]>(sheet, { header: 1, raw: true, defval: null });
+  } catch {
+    throw new PygParseError("invalid-file");
+  }
+}
+
+/**
+ * Reads back the comments an app-exported workbook stashed in its hidden metadata sheet
+ * (absent in system exports → none), keeping only those that still resolve to a real
+ * account and an in-range column. Value edits are not restored — they are baked into the
+ * re-uploaded values already.
+ */
+function readComments(
+  workbook: XLSX.WorkBook,
+  accounts: AccountRow[],
+  width: number,
+): ImportedComment[] {
+  const sheet = workbook.Sheets[META_SHEET_NAME];
+  if (!sheet) {
+    return [];
+  }
+  let rows: unknown[][];
+  try {
+    rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, raw: true, defval: null });
+  } catch {
+    return [];
+  }
+  const codes = new Set(accounts.map((account) => account.code));
+  return metaRowsToComments(rows).filter(
+    (comment) => codes.has(comment.code) && comment.monthIndex >= 0 && comment.monthIndex < width,
+  );
 }
 
 /** First row whose col A is a dot-separated account code with a non-empty col B. */
@@ -138,7 +157,7 @@ function classifyColumns(headerRow: Cell[], warnings: string[]): ColumnMap {
     if (label === "") {
       continue;
     }
-    const monthIndex = MONTHS_FULL_ES.indexOf(label);
+    const monthIndex = MONTHS_FULL_ES.findIndex((name) => normalizeLabel(name) === label);
     if (monthIndex !== -1) {
       monthColumns.push({ sheetCol: col, targetIndex: monthIndex });
     } else if (label === "total") {

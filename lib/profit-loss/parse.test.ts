@@ -4,6 +4,7 @@ import { parsePygWorkbook } from "./parse";
 import {
   ANNUAL_AOA,
   aoaToXlsxBuffer,
+  aoaToXlsxBufferWithMeta,
   CONSOLIDATED_AOA,
   MISMATCHED_PARENT_AOA,
   MONTHLY_AOA,
@@ -14,7 +15,7 @@ import {
 } from "./parse.fixtures";
 
 function parse(aoa: Parameters<typeof aoaToXlsxBuffer>[0], name = "reporte.xlsx") {
-  return parsePygWorkbook(aoaToXlsxBuffer(aoa), name);
+  return parsePygWorkbook(aoaToXlsxBuffer(aoa), name).dataset;
 }
 
 function errorCode(aoa: Parameters<typeof aoaToXlsxBuffer>[0]): string {
@@ -78,6 +79,24 @@ describe("parsePygWorkbook — annual format", () => {
     expect(dataset.accounts.find((a) => a.code === "4")?.values).toEqual([355]);
     expect(dataset.resultFromFile).toEqual([260]);
     expect(dataset.warnings).toEqual([]);
+  });
+});
+
+describe("parsePygWorkbook — metadata comments", () => {
+  it("returns no comments when the workbook has no metadata sheet", () => {
+    const { comments } = parsePygWorkbook(aoaToXlsxBuffer(MONTHLY_AOA), "reporte.xlsx");
+    expect(comments).toEqual([]);
+  });
+
+  it("reconstructs comments from the metadata sheet, filtering the invalid ones", () => {
+    const buffer = aoaToXlsxBufferWithMeta(MONTHLY_AOA, [
+      ["code", "monthIndex", "comment"],
+      ["4.1.1", 0, "Ajuste de enero"],
+      ["9.9.9", 0, "cuenta inexistente"], // dropped: not among the parsed accounts
+      ["4.1.1", 99, "mes fuera de rango"], // dropped: monthIndex outside the 12-month base
+    ]);
+    const { comments } = parsePygWorkbook(buffer, "reporte.xlsx");
+    expect(comments).toEqual([{ code: "4.1.1", monthIndex: 0, comment: "Ajuste de enero" }]);
   });
 });
 

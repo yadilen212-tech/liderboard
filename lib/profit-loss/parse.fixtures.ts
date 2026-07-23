@@ -4,6 +4,7 @@
  * invented data — tests must never depend on the git-ignored `.context/` samples.
  */
 import * as XLSX from "xlsx";
+import { META_SHEET_NAME } from "./excel-metadata";
 import type { AccountRow } from "./types";
 
 export type FixtureCell = string | number | null;
@@ -145,5 +146,17 @@ export function aoaToXlsxBuffer(aoa: FixtureCell[][]): ArrayBuffer {
   const sheet = XLSX.utils.aoa_to_sheet(aoa);
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, sheet, "Consulta Personas");
+  return XLSX.write(workbook, { type: "array", bookType: "xlsx" }) as ArrayBuffer;
+}
+
+/** Same, plus a hidden metadata sheet — exercises parse's comment re-import path. */
+export function aoaToXlsxBufferWithMeta(
+  aoa: FixtureCell[][],
+  metaRows: (string | number)[][],
+): ArrayBuffer {
+  const workbook = XLSX.utils.book_new();
+  // Data sheet first so SheetNames[0] stays the data sheet.
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(aoa), "Consulta Personas");
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(metaRows), META_SHEET_NAME);
   return XLSX.write(workbook, { type: "array", bookType: "xlsx" }) as ArrayBuffer;
 }

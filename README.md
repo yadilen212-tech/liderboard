@@ -73,14 +73,14 @@ frecuencia, que sí controla los datos mostrados):
   filtros): filtro por cuentas mayores (grupo Todos/Ingresos/Costos, "Ocultar ceros",
   expandir a nivel 1–4/Todo) y acciones de Excel a la derecha — **Cargar Excel** (conectado
   al pipeline real de carga), menú **Descargar Excel** (Excel con tus datos · Plantilla
-  vacía) e ícono de **información** con los formatos aceptados.
+  vacía, ambos conectados al pipeline de exportación) e ícono de **información** con los
+  formatos aceptados.
 
 **Tabla de Datos de PyG** (`DatosView` en la tab Datos) — el estado de resultados editable:
 
 - Componente **controlado por props y listo para el Excel**: sin datos muestra un **estado
-  vacío** ("Carga un Excel…"); cuando llegan filas, arma la grilla. La carga real del Excel
-  ya está implementada (ver "Carga de Excel" más abajo); la descarga/exportación sigue
-  pendiente.
+  vacío** ("Carga un Excel…"); cuando llegan filas, arma la grilla. La carga y la descarga
+  del Excel ya están implementadas (ver "Carga de Excel" y "Descarga de Excel" más abajo).
 - Grilla con **árbol de cuentas** (expandir/colapsar), 12 meses + **Total**, **columnas
   ordenables**, negativos en rojo, ceros como `–` y marca de esquina en celdas con comentario.
 - **Edición de celdas**: solo las **cuentas de movimiento** (hoja del árbol) editan su valor;
@@ -112,8 +112,28 @@ El contenido de Gráficos y Análisis aún está en construcción.
   desagrega. Un archivo anual queda bloqueado en Anual.
 - **Persistencia:** IndexedDB (Dexie). El dataset original y las ediciones/comentarios
   viven en tablas separadas — la comparación "original vs editado" llegará sin
-  migraciones. Subir otro archivo reemplaza todo (con confirmación si hay ediciones).
+  migraciones. Subir otro archivo reemplaza todo (con confirmación si hay ediciones); si
+  el archivo fue exportado por la app, sus **comentarios se restauran** al recargarlo.
 - **Decisión — edición solo en vista mensual:** editar valores y comentar celdas solo
   está disponible en la frecuencia Mensual, porque una celda agregada cubre varios
   meses y la edición sería ambigua. Si a futuro se quiere editar en vistas agregadas
   (p. ej. prorrateando entre meses), esta decisión es el punto a revisitar.
+
+## Descarga de Excel (PyG › Datos)
+
+- **Dos exportaciones** (menú "Descargar Excel"), generadas con **`exceljs`** (formato +
+  notas de celda, que SheetJS no escribe), cargada por _dynamic import_ para no engordar el
+  bundle inicial:
+  - **Excel con tus datos:** el Estado de Resultados con los **valores editados** y los
+    **comentarios** actuales, con formato (preámbulo, cabecera y cuentas padre en negrita,
+    sangría por nivel, moneda a 2 decimales, columna Total, paneles congelados). Cada celda
+    editada lleva una **nota** con `Valor original: $X → $Y` (más el comentario si lo hay);
+    las celdas solo comentadas llevan su texto. Se exporta siempre en la **frecuencia base**.
+  - **Plantilla vacía:** la misma estructura **sembrada con tus cuentas** (código + nombre)
+    y los montos en blanco, para llenar y volver a cargar.
+- **Round-trip:** el archivo "con tus datos" se **vuelve a subir** sin error; los valores se
+  conservan y los **comentarios se restauran**. El re-import usa una **hoja de metadatos
+  oculta** (`_liderplus_meta`, `veryHidden`) con el texto exacto del comentario — no se
+  parsea la prosa de las notas. Los value-edits no se "reviven": los valores editados quedan
+  como nueva base.
+- **`lib/download.ts`** expone `downloadBlob(blob, filename)`, reutilizable por cualquier módulo.

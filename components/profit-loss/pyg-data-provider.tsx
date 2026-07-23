@@ -83,7 +83,7 @@ export function PygDataProvider({ children }: { children: ReactNode }) {
     try {
       // Dynamic import keeps SheetJS out of the initial bundle.
       const { parsePygFile } = await import("@/lib/profit-loss/parse");
-      const parsed = await parsePygFile(file);
+      const { dataset, comments } = await parsePygFile(file);
       const editCount = await db.edits.count();
       if (
         editCount > 0 &&
@@ -93,7 +93,8 @@ export function PygDataProvider({ children }: { children: ReactNode }) {
       ) {
         return;
       }
-      await replaceDataset(parsed);
+      // Comments stashed by a previous export are restored; value edits fold into the base.
+      await replaceDataset(dataset, comments);
     } catch (error) {
       setUploadError(
         error instanceof PygParseError

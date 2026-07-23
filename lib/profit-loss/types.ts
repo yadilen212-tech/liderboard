@@ -34,6 +34,23 @@ export interface PygDataset {
   warnings: string[];
 }
 
+/**
+ * A comment carried in an exported workbook's hidden metadata sheet, reconstructed on
+ * re-upload. Value edits fold into the new baseline; only comments round-trip.
+ */
+export interface ImportedComment {
+  code: string;
+  /** Base-frequency column index (month for a monthly base). */
+  monthIndex: number;
+  comment: string;
+}
+
+/** What `parsePygWorkbook` yields: the dataset plus any comments to re-seed as edits. */
+export interface PygParseResult {
+  dataset: PygDataset;
+  comments: ImportedComment[];
+}
+
 /** A user edit overlay — never mutates `AccountRow.values`. */
 export interface CellEdit {
   id?: number;

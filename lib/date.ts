@@ -19,3 +19,22 @@ export const MONTHS_SHORT_ES = [
   "Nov",
   "Dic",
 ] as const;
+
+/**
+ * Full month names, index-aligned with `MONTHS_SHORT_ES`. Used where labels must be
+ * unabbreviated — the PyG export header (which parse reads back, matching these names).
+ */
+export const MONTHS_FULL_ES = [
+  "Enero",
+  "Febrero",
+  "Marzo",
+  "Abril",
+  "Mayo",
+  "Junio",
+  "Julio",
+  "Agosto",
+  "Septiembre",
+  "Octubre",
+  "Noviembre",
+  "Diciembre",
+] as const;

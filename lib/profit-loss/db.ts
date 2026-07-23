@@ -4,7 +4,7 @@
  * reads both sides as-is. One dataset at a time: uploading replaces everything.
  */
 import Dexie, { type Table } from "dexie";
-import type { CellEdit, PygDataset } from "./types";
+import type { CellEdit, ImportedComment, PygDataset } from "./types";
 
 class PygDb extends Dexie {
   datasets!: Table<PygDataset, string>;
@@ -21,12 +21,31 @@ class PygDb extends Dexie {
 
 export const db = new PygDb();
 
-/** Atomically replaces the active dataset and clears every edit. */
-export async function replaceDataset(dataset: PygDataset): Promise<void> {
+/**
+ * Atomically replaces the active dataset and clears every edit. Comments recovered from
+ * an app-exported file's metadata sheet are re-seeded as comment-only edits on the new
+ * dataset (value edits are already baked into its values, so they are not restored).
+ */
+export async function replaceDataset(
+  dataset: PygDataset,
+  comments: ImportedComment[] = [],
+): Promise<void> {
   await db.transaction("rw", db.datasets, db.edits, async () => {
     await db.edits.clear();
     await db.datasets.clear();
     await db.datasets.add(dataset);
+    if (comments.length > 0) {
+      const now = Date.now();
+      await db.edits.bulkAdd(
+        comments.map((comment) => ({
+          datasetId: dataset.id,
+          code: comment.code,
+          monthIndex: comment.monthIndex,
+          comment: comment.comment,
+          updatedAt: now,
+        })),
+      );
+    }
   });
 }
 

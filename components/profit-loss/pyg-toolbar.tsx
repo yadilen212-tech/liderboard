@@ -11,7 +11,6 @@ import type { ModuleTabId } from "@/lib/modules";
 import type { Frequency } from "@/lib/profit-loss/types";
 import { AccountFilter } from "./account-filter";
 import { CompareBar } from "./compare-bar";
-import { PeriodFilter } from "./period-filter";
 import { usePygData } from "./pyg-data-provider";
 
 const GRANULARITIES: { value: Frequency; label: string }[] = [
@@ -71,7 +70,6 @@ export function PygToolbar({ activeTab }: { activeTab: ModuleTabId }) {
             value={frequency}
             onChange={setFrequency}
           />
-          <PeriodFilter />
         </div>
       </Toolbar>
 
