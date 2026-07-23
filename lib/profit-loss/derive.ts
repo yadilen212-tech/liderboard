@@ -299,3 +299,78 @@ function joinComments(
   }
   return parts.length > 0 ? parts.join("\n") : undefined;
 }
+
+/**
+ * Merges several centers' account rows into one set for the Consolidado view: union of
+ * codes, column-wise sum of LEAF values (parents recompute downstream via computeRollups).
+ * Assumes a shared chart of accounts across centers; a code that is a leaf in one center and
+ * a parent in another is a structural conflict — the parent structure wins and it is warned.
+ */
+export function mergeCenters(centers: AccountRow[][]): {
+  accounts: AccountRow[];
+  warnings: string[];
+} {
+  const warnings: string[] = [];
+  const width = centers.find((c) => c.length > 0)?.[0]?.values.length ?? 0;
+
+  // Which codes are parents (some other code extends them) anywhere across the centers.
+  const allCodes = new Set<string>();
+  for (const center of centers) {
+    for (const account of center) {
+      allCodes.add(account.code);
+    }
+  }
+  const isParent = (code: string): boolean => {
+    for (const other of allCodes) {
+      if (other !== code && other.startsWith(`${code}.`)) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  const order: string[] = [];
+  const merged = new Map<string, AccountRow>();
+  const conflicted = new Set<string>();
+
+  for (const center of centers) {
+    for (const account of center) {
+      const existing = merged.get(account.code);
+      if (!existing) {
+        order.push(account.code);
+        merged.set(account.code, {
+          code: account.code,
+          name: account.name,
+          values: Array.from({ length: width }, (_, i) => account.values[i] ?? 0),
+        });
+        continue;
+      }
+      // Only sum LEAF values; parents recompute from leaves in computeRollups.
+      if (!isParent(account.code)) {
+        for (let i = 0; i < width; i++) {
+          existing.values[i] += account.values[i] ?? 0;
+        }
+      }
+    }
+  }
+
+  // Structural conflict: a code that is a leaf in at least one center but a parent overall.
+  for (const code of order) {
+    if (!isParent(code)) {
+      continue;
+    }
+    const leafSomewhere = centers.some(
+      (center) =>
+        center.some((a) => a.code === code) &&
+        !center.some((a) => a.code !== code && a.code.startsWith(`${code}.`)),
+    );
+    if (leafSomewhere && !conflicted.has(code)) {
+      conflicted.add(code);
+      warnings.push(
+        `La cuenta ${code} es hoja en un centro y padre en otro; se trata como padre en el consolidado.`,
+      );
+    }
+  }
+
+  return { accounts: order.map((code) => merged.get(code) as AccountRow), warnings };
+}

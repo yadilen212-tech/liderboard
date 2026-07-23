@@ -6,6 +6,7 @@ import {
   buildAccountTree,
   computeResult,
   computeRollups,
+  mergeCenters,
   periodLabels,
   toDatosGrid,
 } from "./derive";
@@ -149,6 +150,7 @@ function monthlyDataset(): PygDataset {
     periodLabel: "Ene–Dic 2026",
     year: 2026,
     baseFrequency: "mensual",
+    role: "single",
     accounts: MONTHLY_ACCOUNTS,
     resultFromFile: MONTHLY_RESULT,
     warnings: [],
@@ -276,3 +278,37 @@ function flattenGrid(grid: ReturnType<typeof toDatosGrid>) {
   walk(grid.rows);
   return map;
 }
+
+describe("mergeCenters", () => {
+  it("unions accounts by code and sums leaf values column-wise", () => {
+    const a = [
+      { code: "4", name: "Ingresos", values: [10, 0] },
+      { code: "4.1", name: "Ventas", values: [10, 0] },
+      { code: "4.2", name: "Otros", values: [0, 0] },
+    ];
+    const b = [
+      { code: "4", name: "Ingresos", values: [5, 7] },
+      { code: "4.1", name: "Ventas", values: [5, 7] },
+      { code: "4.3", name: "Extra", values: [0, 0] },
+    ];
+    const { accounts, warnings } = mergeCenters([a, b]);
+    const byCode = new Map(accounts.map((x) => [x.code, x.values]));
+    // 4.1 is a leaf in both → summed; 4.2 only in a, 4.3 only in b → carried through.
+    expect(byCode.get("4.1")).toEqual([15, 7]);
+    expect(byCode.get("4.2")).toEqual([0, 0]);
+    expect(byCode.get("4.3")).toEqual([0, 0]);
+    // Union keeps every code exactly once.
+    expect(accounts.map((x) => x.code).sort()).toEqual(["4", "4.1", "4.2", "4.3"]);
+    expect(warnings).toEqual([]);
+  });
+
+  it("warns when a code is a leaf in one center and a parent in another", () => {
+    const a = [{ code: "4", name: "Ingresos", values: [10] }]; // 4 is a leaf here
+    const b = [
+      { code: "4", name: "Ingresos", values: [8] },
+      { code: "4.1", name: "Ventas", values: [8] }, // 4 is a parent here
+    ];
+    const { warnings } = mergeCenters([a, b]);
+    expect(warnings.some((w) => w.includes("4"))).toBe(true);
+  });
+});
