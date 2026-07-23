@@ -248,7 +248,7 @@ export function toDatosGrid(
     id: "default",
     title: "Estado de Resultados",
     utilidad: {
-      label: `${positive ? "Utilidad" : "Pérdida"} ${formatCurrency(total)}`,
+      label: `${positive ? "Utilidad" : "Pérdida"} ${formatCurrency(total, { cents: true })}`,
       positive,
     },
     months: [...periodLabels(base === "anual" ? "anual" : frequency)],

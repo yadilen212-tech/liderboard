@@ -23,7 +23,7 @@ export function formatAmount(value: number | null): string {
   if (value === null || value === 0) {
     return "–";
   }
-  return formatCurrency(value);
+  return formatCurrency(value, { cents: true });
 }
 
 function sortValue(row: DatosRow, sort: DatosSort): number | string {
