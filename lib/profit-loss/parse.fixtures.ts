@@ -97,15 +97,22 @@ export const ANNUAL_AOA: FixtureCell[][] = [
   [null, "Utilidad o Perdida", 260],
 ];
 
-/** Consolidated-by-cost-center export: rejected (no date line; text value columns). */
+/**
+ * Consolidated-by-cost-center export: text value columns (GENERAL + centers + sin-centro),
+ * annual values. GENERAL == sum of the other columns, as the real files guarantee.
+ */
 export const CONSOLIDATED_AOA: FixtureCell[][] = [
   ["HOTELERA ANDES S.A."],
   ["Estado de Resultados"],
   [null],
-  [null, null, "GENERAL", "SUCURSAL NORTE", "SIN CENTRO DE COSTO"],
-  ["4", "Ingresos", 355, 300, 55],
-  ["5", "Costos y Gastos", 95, 90, 5],
-  [null, "Utilidad o Perdida", 260, 210, 50],
+  [null, null, "GENERAL", "SUCURSAL NORTE", "SUCURSAL SUR", "SIN CENTRO DE COSTO"],
+  ["4", "Ingresos", 355, 300, 45, 10],
+  ["4.1", "Ventas", 355, 300, 45, 10],
+  ["4.1.1", "Ventas Habitaciones", 355, 300, 45, 10],
+  ["5", "Costos y Gastos", 95, 80, 10, 5],
+  ["5.1", "Gastos Operativos", 95, 80, 10, 5],
+  ["5.1.1", "Sueldos", 95, 80, 10, 5],
+  [null, "Utilidad o Perdida", 260, 220, 35, 5],
 ];
 
 /** Monthly file whose "4.1" parent row disagrees with the sum of its children. */

@@ -23,12 +23,18 @@ const COST_CENTER_LINE = /^Centro de Costo:\s*(.+)$/i;
 /** Tolerance for float drift when validating file sums (one cent). */
 const SUM_TOLERANCE = 0.011;
 
-interface ColumnMap {
+interface StatementColumns {
+  kind: "statement";
   baseFrequency: Frequency;
   /** sheet column index → month index 0–11 (monthly base) or 0 (annual base). */
   valueColumns: { sheetCol: number; targetIndex: number }[];
   width: 12 | 1;
 }
+interface ConsolidatedColumns {
+  kind: "consolidated";
+  columns: { sheetCol: number; name: string }[];
+}
+type ColumnClassification = StatementColumns | ConsolidatedColumns;
 
 export async function parsePygFile(file: File): Promise<PygParseResult> {
   const buffer = await file.arrayBuffer();
@@ -49,6 +55,9 @@ export function parsePygWorkbook(data: ArrayBuffer, fileName: string): PygParseR
 
   const warnings: string[] = [];
   const columns = classifyColumns(grid[headerRow], warnings);
+  if (columns.kind === "consolidated") {
+    throw new PygParseError("consolidated-unsupported");
+  }
   const meta = parsePreamble(grid.slice(0, headerRow));
   const { accounts, resultFromFile } = parseBody(grid, firstDataRow, columns);
   if (accounts.length === 0) {
@@ -146,14 +155,16 @@ function normalizeLabel(cell: Cell): string {
 }
 
 /**
- * Month-name labels → monthly base; a lone "Total" → annual base; any other text label
- * (GENERAL, center names…) → the consolidated cost-center format, rejected for now.
+ * Month-name labels → monthly statement; a lone "Total" → annual statement; any other text
+ * labels (GENERAL, center names…) → the consolidated-by-cost-center format.
  */
-function classifyColumns(headerRow: Cell[], warnings: string[]): ColumnMap {
+function classifyColumns(headerRow: Cell[], warnings: string[]): ColumnClassification {
   const monthColumns: { sheetCol: number; targetIndex: number }[] = [];
+  const textColumns: { sheetCol: number; name: string }[] = [];
   let sawTotal = false;
 
   for (let col = 2; col < headerRow.length; col++) {
+    const raw = String(headerRow[col] ?? "").trim();
     const label = normalizeLabel(headerRow[col]);
     if (label === "") {
       continue;
@@ -164,20 +175,23 @@ function classifyColumns(headerRow: Cell[], warnings: string[]): ColumnMap {
     } else if (label === "total") {
       sawTotal = true;
     } else {
-      throw new PygParseError("consolidated-unsupported");
+      textColumns.push({ sheetCol: col, name: raw });
     }
   }
 
+  if (textColumns.length > 0) {
+    return { kind: "consolidated", columns: textColumns };
+  }
   if (monthColumns.length > 0) {
     if (monthColumns.length < 12) {
       warnings.push(
         `El archivo trae ${monthColumns.length} de 12 meses; los meses faltantes se rellenan con 0.`,
       );
     }
-    return { baseFrequency: "mensual", valueColumns: monthColumns, width: 12 };
+    return { kind: "statement", baseFrequency: "mensual", valueColumns: monthColumns, width: 12 };
   }
   if (sawTotal) {
-    return { baseFrequency: "anual", valueColumns: [], width: 1 };
+    return { kind: "statement", baseFrequency: "anual", valueColumns: [], width: 1 };
   }
   throw new PygParseError("no-header");
 }
@@ -219,7 +233,7 @@ function parsePreamble(rows: Cell[][]): {
 function parseBody(
   grid: Cell[][],
   firstDataRow: number,
-  columns: ColumnMap,
+  columns: StatementColumns,
 ): { accounts: AccountRow[]; resultFromFile: number[] } {
   const accounts: AccountRow[] = [];
   let resultFromFile: number[] = Array.from({ length: columns.width }, () => 0);
@@ -238,7 +252,7 @@ function parseBody(
   return { accounts, resultFromFile };
 }
 
-function readValues(row: Cell[], columns: ColumnMap): number[] {
+function readValues(row: Cell[], columns: StatementColumns): number[] {
   if (columns.baseFrequency === "anual") {
     // Annual base: the single value column is the first non-label cell (col 2).
     return [toNumber(row[2])];
@@ -266,7 +280,7 @@ function toNumber(cell: Cell): number {
 function validateAgainstFile(
   accounts: AccountRow[],
   resultFromFile: number[],
-  columns: ColumnMap,
+  columns: StatementColumns,
 ): string[] {
   const warnings: string[] = [];
   const { roots, warnings: treeWarnings } = buildAccountTree(accounts);
@@ -309,10 +323,108 @@ function validateAgainstFile(
   return warnings;
 }
 
-function columnLabel(col: number, columns: ColumnMap): string {
+function columnLabel(col: number, columns: StatementColumns): string {
   return columns.baseFrequency === "anual" ? "Total" : MONTHS_SHORT_ES[col];
 }
 
 function round2(value: number): number {
   return Math.round(value * 100) / 100;
+}
+
+export interface ConsolidatedColumn {
+  name: string;
+  kind: "general" | "center" | "sin-centro";
+  accounts: AccountRow[];
+  resultFromFile: number[];
+}
+export interface ParsedConsolidated {
+  companyName: string;
+  fileName: string;
+  columns: ConsolidatedColumn[];
+  warnings: string[];
+}
+export type ParseOutcome =
+  | { format: "statement"; result: PygParseResult }
+  | { format: "consolidated"; consolidated: ParsedConsolidated };
+
+const SIN_CENTRO = /sin\s+centro\s+de\s+costo/i;
+
+function consolidatedColumnKind(name: string): ConsolidatedColumn["kind"] {
+  if (normalizeLabel(name) === "general") {
+    return "general";
+  }
+  return SIN_CENTRO.test(name) ? "sin-centro" : "center";
+}
+
+export function parseConsolidatedWorkbook(data: ArrayBuffer, fileName: string): ParsedConsolidated {
+  const workbook = readWorkbook(data);
+  const grid = readGrid(workbook, workbook.SheetNames[0]);
+  const firstDataRow = findFirstDataRow(grid);
+  if (firstDataRow === -1) {
+    throw new PygParseError("no-accounts");
+  }
+  const headerRow = findHeaderRow(grid, firstDataRow);
+  if (headerRow === -1) {
+    throw new PygParseError("no-header");
+  }
+  const warnings: string[] = [];
+  const classification = classifyColumns(grid[headerRow], warnings);
+  if (classification.kind !== "consolidated") {
+    throw new PygParseError("consolidated-unsupported");
+  }
+  const meta = parsePreamble(grid.slice(0, headerRow));
+
+  const columns: ConsolidatedColumn[] = classification.columns.map((column) => ({
+    name: column.name,
+    kind: consolidatedColumnKind(column.name),
+    accounts: [] as AccountRow[],
+    resultFromFile: [0],
+  }));
+
+  for (let i = firstDataRow; i < grid.length; i++) {
+    const row = grid[i];
+    const code = typeof row[0] === "string" ? row[0].trim() : "";
+    const name = typeof row[1] === "string" ? row[1].trim() : "";
+    const isAccount = code && ACCOUNT_CODE.test(code) && name;
+    const isResult = !code && RESULT_NAME.test(name);
+    if (!isAccount && !isResult) {
+      continue;
+    }
+    classification.columns.forEach((column, ci) => {
+      const value = toNumber(row[column.sheetCol]);
+      if (isAccount) {
+        columns[ci].accounts.push({ code, name, values: [value] });
+      } else {
+        columns[ci].resultFromFile = [value];
+      }
+    });
+  }
+
+  if (!columns.some((c) => c.kind === "general")) {
+    throw new PygParseError("consolidated-unsupported");
+  }
+  return { companyName: meta.companyName, fileName, columns, warnings };
+}
+
+export function parseWorkbook(data: ArrayBuffer, fileName: string): ParseOutcome {
+  const workbook = readWorkbook(data);
+  const grid = readGrid(workbook, workbook.SheetNames[0]);
+  const firstDataRow = findFirstDataRow(grid);
+  if (firstDataRow === -1) {
+    throw new PygParseError("no-accounts");
+  }
+  const headerRow = findHeaderRow(grid, firstDataRow);
+  if (headerRow === -1) {
+    throw new PygParseError("no-header");
+  }
+  const classification = classifyColumns(grid[headerRow], []);
+  if (classification.kind === "consolidated") {
+    return { format: "consolidated", consolidated: parseConsolidatedWorkbook(data, fileName) };
+  }
+  return { format: "statement", result: parsePygWorkbook(data, fileName) };
+}
+
+export async function parseWorkbookFile(file: File): Promise<ParseOutcome> {
+  const buffer = await file.arrayBuffer();
+  return parseWorkbook(buffer, file.name);
 }

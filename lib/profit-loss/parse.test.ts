@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { PygParseError } from "./errors";
-import { parsePygWorkbook } from "./parse";
+import { parseConsolidatedWorkbook, parsePygWorkbook, parseWorkbook } from "./parse";
 import {
   ANNUAL_AOA,
   aoaToXlsxBuffer,
@@ -102,8 +102,9 @@ describe("parsePygWorkbook — metadata comments", () => {
 });
 
 describe("parsePygWorkbook — rejections", () => {
-  it("rejects consolidated cost-center files", () => {
-    expect(errorCode(CONSOLIDATED_AOA)).toBe("consolidated-unsupported");
+  it("no longer rejects consolidated files (they route to the consolidated branch)", () => {
+    const outcome = parseWorkbook(aoaToXlsxBuffer(CONSOLIDATED_AOA), "c.xlsx");
+    expect(outcome.format).toBe("consolidated");
   });
 
   it("rejects files without account rows", () => {
@@ -120,5 +121,42 @@ describe("parsePygWorkbook — rejections", () => {
       expect(error).toBeInstanceOf(PygParseError);
       expect((error as PygParseError).code).toBe("invalid-file");
     }
+  });
+});
+
+describe("parseWorkbook — routing", () => {
+  it("routes a monthly file to the statement branch", () => {
+    const outcome = parseWorkbook(aoaToXlsxBuffer(MONTHLY_AOA), "m.xlsx");
+    expect(outcome.format).toBe("statement");
+  });
+
+  it("routes a consolidated file to the consolidated branch", () => {
+    const outcome = parseWorkbook(aoaToXlsxBuffer(CONSOLIDATED_AOA), "c.xlsx");
+    expect(outcome.format).toBe("consolidated");
+  });
+});
+
+describe("parseConsolidatedWorkbook", () => {
+  it("splits every value column into an annual account set with a detected kind", () => {
+    const parsed = parseConsolidatedWorkbook(aoaToXlsxBuffer(CONSOLIDATED_AOA), "c.xlsx");
+    expect(parsed.companyName).toBe("HOTELERA ANDES S.A.");
+    expect(parsed.columns.map((c) => c.kind)).toEqual([
+      "general",
+      "center",
+      "center",
+      "sin-centro",
+    ]);
+    const norte = parsed.columns.find((c) => c.name === "SUCURSAL NORTE");
+    expect(norte?.accounts.find((a) => a.code === "4")?.values).toEqual([300]);
+    const sin = parsed.columns.find((c) => c.kind === "sin-centro");
+    expect(sin?.accounts.find((a) => a.code === "4")?.values).toEqual([10]);
+  });
+
+  it("ignores trailing empty header columns", () => {
+    const withBlank = CONSOLIDATED_AOA.map((row, i) =>
+      i === 3 ? [...row, null, null] : row,
+    ) as typeof CONSOLIDATED_AOA;
+    const parsed = parseConsolidatedWorkbook(aoaToXlsxBuffer(withBlank), "c.xlsx");
+    expect(parsed.columns).toHaveLength(4);
   });
 });
