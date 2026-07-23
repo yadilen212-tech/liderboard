@@ -12,17 +12,19 @@ Desktop only — no responsive/mobile layer.
 
 Package manager is **pnpm** (pinned via `packageManager`). Node LTS.
 
-| Task                                | Command                               |
-| ----------------------------------- | ------------------------------------- |
-| Dev server (Turbopack, :3000)       | `pnpm dev`                            |
-| Production build (also type-checks) | `pnpm build`                          |
-| Serve production build              | `pnpm start`                          |
-| Lint                                | `pnpm lint` (or `pnpm exec oxlint .`) |
-| Lint + autofix                      | `pnpm lint:fix`                       |
-| Format                              | `pnpm fmt`                            |
-| Format check (CI gate)              | `pnpm fmt:check`                      |
+| Task                                 | Command                               |
+| ------------------------------------ | ------------------------------------- |
+| Dev server (Turbopack, :3000)        | `pnpm dev`                            |
+| Production build (also type-checks)  | `pnpm build`                          |
+| Serve production build               | `pnpm start`                          |
+| Lint                                 | `pnpm lint` (or `pnpm exec oxlint .`) |
+| Lint + autofix                       | `pnpm lint:fix`                       |
+| Format                               | `pnpm fmt`                            |
+| Format check (CI gate)               | `pnpm fmt:check`                      |
+| Tests (Vitest, only lib/profit-loss) | `pnpm test`                           |
 
-There is **no test runner configured** — do not assume Jest/Vitest exist.
+**Vitest** is configured but runs ONLY the pure layer (`lib/**/*.test.ts`, e.g.
+`lib/profit-loss/`); there are no component/jsdom tests.
 
 CI (`.github/workflows/ci.yml`) runs three independent jobs on PRs and pushes to
 `main`: `pnpm lint`, `pnpm fmt:check`, `pnpm build`. A husky pre-commit hook runs
@@ -40,6 +42,8 @@ CI (`.github/workflows/ci.yml`) runs three independent jobs on PRs and pushes to
   `app/globals.css` via `@import "tailwindcss"` + an `@theme { … }` block.
 - TypeScript is `strict`; import alias `@/*` maps to the repo root (e.g.
   `@/lib/modules`).
+- Vitest covers only `lib/profit-loss/` (the pure parse/derive/persistence layer) — no
+  jsdom/component tests; config in `vitest.config.ts`.
 
 ## Code conventions
 
@@ -87,10 +91,15 @@ markup. Module-specific compositions live in `components/<module>/` (currently
 `ModuleTabs` renders a module's toolbar between the tabs and the content panel when one
 exists (only PyG today); `ActiveClient` shows the client name in the header for PyG.
 Filter lists sourced from an uploaded Excel (cuentas, centros de costo) render empty
-states until data loads. PyG › Datos owns `DatosView` — the prop-driven, Excel-ready
-Estado de Resultados table (account tree, sortable months + Total, cell edit/comment)
-plus a mock cost-center tab strip; it renders an empty state until real data arrives.
-Only leaf (movement) accounts edit their value; parent accounts comment-only.
+states until data loads. PyG › Datos now loads real Excel data: `lib/profit-loss/`
+holds the pure parse/derive layer plus Dexie (IndexedDB) persistence, and
+`PygDataProvider` — mounted in the dashboard layout — shares `dataset`/`edits`/
+`frequency` between the header (`ActiveClient`) and the Datos content. `DatosView`
+renders the Estado de Resultados table (account tree, sortable months + Total, cell
+edit/comment); editing/commenting is monthly-view-only. Only leaf (movement) accounts
+edit their value; parent accounts comment-only. The cost-center tab strip is gated off
+(not rendered) until cost-center support lands — consolidated files are rejected at
+parse time.
 
 **Design tokens.** Colors and fonts are defined once in `app/globals.css`'s
 `@theme` block (`brand`, `brand-soft`, `canvas`, `surface`, `border`, `ink`,
