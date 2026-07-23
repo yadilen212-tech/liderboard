@@ -3,7 +3,10 @@
  * result, and edit overlays. Parents are ALWAYS recomputed from movement (leaf)
  * accounts — the file's parent values are validation input, never display truth.
  */
-import type { AccountRow, CellEdit } from "./types";
+import { MONTHS_SHORT_ES } from "@/lib/date";
+import { formatCurrency } from "@/lib/format";
+import type { DatosCell, DatosGrid, DatosRow } from "./datos-types";
+import type { AccountRow, CellEdit, Frequency, PygDataset } from "./types";
 
 export interface AccountNode {
   code: string;
@@ -153,4 +156,144 @@ export function computeResult(roots: AccountNode[]): { values: number[]; warning
     }
   }
   return { values, warnings };
+}
+
+/** Coarseness order. A file's base frequency floors the UI options (aggregate up only). */
+export const FREQUENCY_ORDER: readonly Frequency[] = [
+  "mensual",
+  "trimestral",
+  "semestral",
+  "anual",
+];
+
+/** Months each period spans, in a 12-month year. */
+const MONTHS_PER_PERIOD: Record<Frequency, number> = {
+  mensual: 1,
+  trimestral: 3,
+  semestral: 6,
+  anual: 12,
+};
+
+const PERIOD_LABELS: Record<Frequency, readonly string[]> = {
+  mensual: MONTHS_SHORT_ES,
+  trimestral: ["T1", "T2", "T3", "T4"],
+  semestral: ["S1", "S2"],
+  anual: ["Total"],
+};
+
+export function allowedFrequencies(base: Frequency): Frequency[] {
+  return FREQUENCY_ORDER.slice(FREQUENCY_ORDER.indexOf(base));
+}
+
+export function periodLabels(target: Frequency): readonly string[] {
+  return PERIOD_LABELS[target];
+}
+
+/**
+ * Period SUMS — a P&L is a flow statement, so quarters/semesters/years add their
+ * months (never average). A non-monthly base can only render itself.
+ */
+export function aggregate(values: number[], base: Frequency, target: Frequency): number[] {
+  if (base === target) {
+    return values;
+  }
+  if (base !== "mensual") {
+    throw new Error(`No se puede desagregar de ${base} a ${target}.`);
+  }
+  const span = MONTHS_PER_PERIOD[target];
+  const periods = 12 / span;
+  return Array.from({ length: periods }, (_, p) =>
+    values.slice(p * span, (p + 1) * span).reduce((sum, v) => sum + v, 0),
+  );
+}
+
+/**
+ * The full pipeline the Datos view renders: tree → leaf edits → rollups → aggregate →
+ * grid. Comments stay keyed by base month; an aggregated cell inherits (joined) the
+ * comments of the months it covers, as a read-only indicator.
+ */
+export function toDatosGrid(
+  dataset: PygDataset,
+  edits: CellEdit[],
+  frequency: Frequency,
+): DatosGrid {
+  const { roots } = buildAccountTree(dataset.accounts);
+  const rolled = computeRollups(applyLeafEdits(roots, edits));
+  const result = computeResult(rolled);
+
+  const comments = new Map<string, Map<number, string>>();
+  for (const item of edits) {
+    if (!item.comment) {
+      continue;
+    }
+    const byMonth = comments.get(item.code) ?? new Map<number, string>();
+    byMonth.set(item.monthIndex, item.comment);
+    comments.set(item.code, byMonth);
+  }
+
+  const base = dataset.baseFrequency;
+  const rows: DatosRow[] = rolled.map((node) => toDatosRow(node, base, frequency, comments));
+  const resultValues = aggregate(result.values, base, frequency);
+  rows.push({
+    code: "",
+    name: "Utilidad o Pérdida",
+    level: 1,
+    isResult: true,
+    cells: resultValues.map((value) => ({ value })),
+  });
+
+  const total = result.values.reduce((sum, v) => sum + v, 0);
+  const positive = total >= 0;
+  return {
+    id: "default",
+    title: "Estado de Resultados",
+    utilidad: {
+      label: `${positive ? "Utilidad" : "Pérdida"} ${formatCurrency(total)}`,
+      positive,
+    },
+    months: [...periodLabels(base === "anual" ? "anual" : frequency)],
+    rows,
+  };
+}
+
+function toDatosRow(
+  node: AccountNode,
+  base: Frequency,
+  frequency: Frequency,
+  comments: Map<string, Map<number, string>>,
+): DatosRow {
+  const values = aggregate(node.values, base, frequency);
+  const byMonth = comments.get(node.code);
+  const span = base === "mensual" ? MONTHS_PER_PERIOD[frequency] : 1;
+
+  const cells: DatosCell[] = values.map((value, period) => {
+    const joined = byMonth ? joinComments(byMonth, period, span) : undefined;
+    return joined ? { value, comment: joined } : { value };
+  });
+
+  return {
+    code: node.code,
+    name: node.name,
+    level: node.level,
+    cells,
+    ...(node.children.length > 0
+      ? { children: node.children.map((child) => toDatosRow(child, base, frequency, comments)) }
+      : {}),
+  };
+}
+
+/** Joins the comments of every base month a period covers ("" → undefined). */
+function joinComments(
+  byMonth: Map<number, string>,
+  period: number,
+  span: number,
+): string | undefined {
+  const parts: string[] = [];
+  for (let m = period * span; m < (period + 1) * span; m++) {
+    const comment = byMonth.get(m);
+    if (comment) {
+      parts.push(comment);
+    }
+  }
+  return parts.length > 0 ? parts.join("\n") : undefined;
 }

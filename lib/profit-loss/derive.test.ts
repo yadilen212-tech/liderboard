@@ -1,7 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { applyLeafEdits, buildAccountTree, computeResult, computeRollups } from "./derive";
+import {
+  aggregate,
+  allowedFrequencies,
+  applyLeafEdits,
+  buildAccountTree,
+  computeResult,
+  computeRollups,
+  periodLabels,
+  toDatosGrid,
+} from "./derive";
 import { MONTHLY_ACCOUNTS, MONTHLY_RESULT } from "./parse.fixtures";
-import type { AccountRow, CellEdit } from "./types";
+import type { AccountRow, CellEdit, PygDataset } from "./types";
 
 function edit(partial: Partial<CellEdit> & Pick<CellEdit, "code" | "monthIndex">): CellEdit {
   return { datasetId: "d1", updatedAt: 0, ...partial };
@@ -128,5 +137,132 @@ function flatten(roots: ReturnType<typeof buildAccountTree>["roots"]) {
     }
   };
   walk(roots);
+  return map;
+}
+
+function monthlyDataset(): PygDataset {
+  return {
+    id: "d1",
+    fileName: "reporte.xlsx",
+    uploadedAt: 0,
+    companyName: "HOTELERA ANDES S.A.",
+    periodLabel: "Ene–Dic 2026",
+    year: 2026,
+    baseFrequency: "mensual",
+    accounts: MONTHLY_ACCOUNTS,
+    resultFromFile: MONTHLY_RESULT,
+    warnings: [],
+  };
+}
+
+describe("allowedFrequencies", () => {
+  it("floors the options at the base frequency", () => {
+    expect(allowedFrequencies("mensual")).toEqual(["mensual", "trimestral", "semestral", "anual"]);
+    expect(allowedFrequencies("anual")).toEqual(["anual"]);
+    expect(allowedFrequencies("trimestral")).toEqual(["trimestral", "semestral", "anual"]);
+  });
+});
+
+describe("aggregate", () => {
+  const values = [130, 200, 25, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+
+  it("sums monthly values into quarters, semesters and the year", () => {
+    expect(aggregate(values, "mensual", "mensual")).toEqual(values);
+    expect(aggregate(values, "mensual", "trimestral")).toEqual([355, 0, 0, 0]);
+    expect(aggregate([90, 0, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0], "mensual", "trimestral")).toEqual([
+      90, 5, 0, 0,
+    ]);
+    expect(aggregate(values, "mensual", "semestral")).toEqual([355, 0]);
+    expect(aggregate(values, "mensual", "anual")).toEqual([355]);
+  });
+
+  it("is identity for an annual base and refuses disaggregation", () => {
+    expect(aggregate([355], "anual", "anual")).toEqual([355]);
+    expect(() => aggregate([355], "anual", "mensual")).toThrow();
+  });
+});
+
+describe("periodLabels", () => {
+  it("labels each frequency", () => {
+    expect(periodLabels("mensual")).toHaveLength(12);
+    expect(periodLabels("trimestral")).toEqual(["T1", "T2", "T3", "T4"]);
+    expect(periodLabels("semestral")).toEqual(["S1", "S2"]);
+    expect(periodLabels("anual")).toEqual(["Total"]);
+  });
+});
+
+describe("toDatosGrid", () => {
+  it("builds the monthly grid with recomputed parents and the result row", () => {
+    const grid = toDatosGrid(monthlyDataset(), [], "mensual");
+    expect(grid.months).toHaveLength(12);
+    const rows = flattenGrid(grid);
+    expect(rows.get("4")?.cells[0]?.value).toBe(130);
+    expect(rows.get("4")?.level).toBe(1);
+    const result = grid.rows.find((row) => row.isResult);
+    expect(result?.cells.map((c) => c.value).slice(0, 4)).toEqual([40, 200, 25, -5]);
+    expect(grid.utilidad?.positive).toBe(true);
+    expect(grid.utilidad?.label).toContain("Utilidad");
+  });
+
+  it("aggregates cells per frequency", () => {
+    const grid = toDatosGrid(monthlyDataset(), [], "trimestral");
+    expect(grid.months).toEqual(["T1", "T2", "T3", "T4"]);
+    const rows = flattenGrid(grid);
+    expect(rows.get("4")?.cells.map((c) => c.value)).toEqual([355, 0, 0, 0]);
+    expect(rows.get("5")?.cells.map((c) => c.value)).toEqual([90, 5, 0, 0]);
+    const result = grid.rows.find((row) => row.isResult);
+    expect(result?.cells.map((c) => c.value)).toEqual([265, -5, 0, 0]);
+  });
+
+  it("recomputes parents and result from leaf value edits", () => {
+    const edits = [{ datasetId: "d1", code: "4.1.1", monthIndex: 0, value: 0, updatedAt: 0 }];
+    const grid = toDatosGrid(monthlyDataset(), edits, "mensual");
+    const rows = flattenGrid(grid);
+    expect(rows.get("4.1")?.cells[0]?.value).toBe(30);
+    expect(rows.get("4")?.cells[0]?.value).toBe(30);
+    const result = grid.rows.find((row) => row.isResult);
+    expect(result?.cells[0]?.value).toBe(-60);
+  });
+
+  it("marks aggregated cells that cover a commented month", () => {
+    const edits = [
+      { datasetId: "d1", code: "4.1.1", monthIndex: 1, comment: "Revisar factura", updatedAt: 0 },
+    ];
+    const monthly = toDatosGrid(monthlyDataset(), edits, "mensual");
+    expect(flattenGrid(monthly).get("4.1.1")?.cells[1]?.comment).toBe("Revisar factura");
+    const quarterly = toDatosGrid(monthlyDataset(), edits, "trimestral");
+    expect(flattenGrid(quarterly).get("4.1.1")?.cells[0]?.comment).toContain("Revisar factura");
+    expect(flattenGrid(quarterly).get("4.1.1")?.cells[1]?.comment).toBeUndefined();
+  });
+
+  it("renders an annual-base dataset as a single Total column", () => {
+    const dataset: PygDataset = {
+      ...monthlyDataset(),
+      baseFrequency: "anual",
+      accounts: MONTHLY_ACCOUNTS.map((a) => ({
+        ...a,
+        values: [a.values.reduce((s, v) => s + v, 0)],
+      })),
+      resultFromFile: [260],
+    };
+    const grid = toDatosGrid(dataset, [], "anual");
+    expect(grid.months).toEqual(["Total"]);
+    expect(flattenGrid(grid).get("4")?.cells).toHaveLength(1);
+    expect(flattenGrid(grid).get("4")?.cells[0]?.value).toBe(355);
+  });
+});
+
+/** Test helper: flatten a DatosGrid's tree into a code → row map. */
+function flattenGrid(grid: ReturnType<typeof toDatosGrid>) {
+  const map = new Map<string, (typeof grid.rows)[number]>();
+  const walk = (rows: typeof grid.rows) => {
+    for (const row of rows) {
+      map.set(row.code, row);
+      if (row.children) {
+        walk(row.children);
+      }
+    }
+  };
+  walk(grid.rows);
   return map;
 }
