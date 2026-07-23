@@ -60,4 +60,17 @@ describe("saveCellEdit", () => {
     expect(stored).toHaveLength(1);
     expect(stored[0].value).toBeNull();
   });
+
+  it("serializes concurrent saves on the same cell without colliding on the unique index", async () => {
+    await replaceDataset(dataset("a"));
+    // Fire two writes for the SAME cell concurrently — as React StrictMode's double-invoked
+    // state updater did in the browser. Without atomic read-modify-write, both read "no
+    // existing row" and both insert, so the second violates &[datasetId+code+monthIndex].
+    await Promise.all([
+      saveCellEdit({ datasetId: "a", code: "4.1.1", monthIndex: 0, value: 10 }),
+      saveCellEdit({ datasetId: "a", code: "4.1.1", monthIndex: 0, value: 20 }),
+    ]);
+    const stored = await db.edits.toArray();
+    expect(stored).toHaveLength(1);
+  });
 });

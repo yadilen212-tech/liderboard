@@ -33,24 +33,30 @@ export async function replaceDataset(dataset: PygDataset): Promise<void> {
 /**
  * Upserts one cell's override. An edit with no value and no comment means "back to
  * original" — the record is deleted, keeping the edits table a true diff.
+ *
+ * The lookup + write run in one explicit transaction so concurrent saves to the same
+ * cell serialize instead of both inserting and colliding on the unique
+ * &[datasetId+code+monthIndex] index (which two writes did in the browser).
  */
 export async function saveCellEdit(edit: Omit<CellEdit, "id" | "updatedAt">): Promise<void> {
   const key = [edit.datasetId, edit.code, edit.monthIndex] as const;
-  const existing = await db.edits
-    .where("[datasetId+code+monthIndex]")
-    .equals(key as unknown as [string, string, number])
-    .first();
+  await db.transaction("rw", db.edits, async () => {
+    const existing = await db.edits
+      .where("[datasetId+code+monthIndex]")
+      .equals(key as unknown as [string, string, number])
+      .first();
 
-  const isEmpty = edit.value === undefined && !edit.comment;
-  if (isEmpty) {
-    if (existing?.id !== undefined) {
-      await db.edits.delete(existing.id);
+    const isEmpty = edit.value === undefined && !edit.comment;
+    if (isEmpty) {
+      if (existing?.id !== undefined) {
+        await db.edits.delete(existing.id);
+      }
+      return;
     }
-    return;
-  }
-  await db.edits.put({
-    ...(existing?.id !== undefined ? { id: existing.id } : {}),
-    ...edit,
-    updatedAt: Date.now(),
+    await db.edits.put({
+      ...(existing?.id !== undefined ? { id: existing.id } : {}),
+      ...edit,
+      updatedAt: Date.now(),
+    });
   });
 }

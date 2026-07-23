@@ -32,16 +32,24 @@ const EMPTY_GRID: DatosGrid = {
  * <CostCenterTabs> above the table gated on the dataset actually carrying centers.
  */
 export function DatosView() {
-  const { dataset, edits, frequency, saveEdit, uploadError, clearUploadError } = usePygData();
+  const { dataset, edits, frequency, allowed, saveEdit, uploadError, clearUploadError } =
+    usePygData();
 
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
   const [sort, setSort] = useState<DatosSort | null>(null);
   const [editing, setEditing] = useState<EditingState | null>(null);
   const [warningsDismissed, setWarningsDismissed] = useState(false);
 
+  // A newly loaded dataset can be coarser than the current view (its base floors the
+  // options), but the provider resets `frequency` to the base one render later. Until it
+  // does, fall back to the base so we never ask toDatosGrid to disaggregate (it throws).
+  const effectiveFrequency = allowed.includes(frequency)
+    ? frequency
+    : (dataset?.baseFrequency ?? frequency);
+
   const grid = useMemo(
-    () => (dataset ? toDatosGrid(dataset, edits, frequency) : EMPTY_GRID),
-    [dataset, edits, frequency],
+    () => (dataset ? toDatosGrid(dataset, edits, effectiveFrequency) : EMPTY_GRID),
+    [dataset, edits, effectiveFrequency],
   );
   const visibleRows = useMemo(
     () => flattenSorted(grid.rows, collapsed, sort),
@@ -49,8 +57,8 @@ export function DatosView() {
   );
 
   // Value edits and comments only make sense against a concrete month.
-  const editable = Boolean(dataset) && frequency === "mensual";
-  const showTotal = frequency !== "anual";
+  const editable = Boolean(dataset) && effectiveFrequency === "mensual";
+  const showTotal = effectiveFrequency !== "anual";
 
   const onToggle = useCallback((code: string) => {
     setCollapsed((prev) => {
@@ -77,19 +85,20 @@ export function DatosView() {
 
   const onSaveEdit = useCallback(
     (value: number | null, comment: string) => {
-      setEditing((current) => {
-        if (current) {
-          void saveEdit(
-            current.code,
-            current.col,
-            current.valueEditable ? value : undefined,
-            comment,
-          );
-        }
-        return null;
-      });
+      // The persist call is a side effect, so it must live OUTSIDE the state updater:
+      // React StrictMode double-invokes updaters, which would fire two concurrent writes
+      // for the same cell and collide on the unique [datasetId+code+monthIndex] index.
+      if (editing) {
+        void saveEdit(
+          editing.code,
+          editing.col,
+          editing.valueEditable ? value : undefined,
+          comment,
+        );
+      }
+      setEditing(null);
     },
-    [saveEdit],
+    [editing, saveEdit],
   );
 
   const editingRow = editing ? findRow(grid.rows, editing.code) : null;
