@@ -30,8 +30,8 @@ const EMPTY_GRID: DatosGrid = {
  * Excel via PygDataProvider. Cell editing/commenting is MONTHLY-VIEW ONLY (see
  * README, "Edición y frecuencias") — aggregated cells are read-only sums.
  *
- * FUTURE WORK (cost centers): when consolidated/multi-center support lands, render
- * <CostCenterTabs> above the table gated on the dataset actually carrying centers.
+ * In multi-center mode it renders <CostCenterTabs> above the table; editing is gated to
+ * the active view being an editable center (Consolidado and Sin-centro are read-only).
  */
 export function DatosView() {
   const {

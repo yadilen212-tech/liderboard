@@ -100,9 +100,16 @@ edit/comment); editing/commenting is monthly-view-only. The Datos toolbar downlo
 the edited state or a seeded blank template via `exceljs` (`export.ts`, dynamic
 import); the "con tus datos" file re-uploads cleanly and restores its comments from a
 hidden metadata sheet. Only leaf (movement) accounts
-edit their value; parent accounts comment-only. The cost-center tab strip is gated off
-(not rendered) until cost-center support lands — consolidated files are rejected at
-parse time.
+edit their value; parent accounts comment-only. **Cost centers** are supported: a staging
+upload modal (`cost-center-upload-modal.tsx`) accepts several files at once (monthly
+sucursal statements + the annual `consolidado`), grouped by each file's internal
+`Centro de Costo:` line — never by filename (the real exports prove filenames unreliable).
+`workspace.ts` assembles them into a multi-dataset workspace (Dexie v2 + a `meta` singleton)
+and validates cuadres; `CostCenterTabs` switches between a computed **Consolidado** (sum of
+the monthly centers, read-only), each editable center, and an annual read-only **Sin centro
+de costo** (from the consolidado). `parse.ts` now routes consolidated files via
+`parseWorkbook`/`parseConsolidatedWorkbook` instead of rejecting them; the multi-center
+download writes one sheet per center + the Consolidado (`buildMultiCenterWorkbook`).
 
 **Design tokens.** Colors and fonts are defined once in `app/globals.css`'s
 `@theme` block (`brand`, `brand-soft`, `canvas`, `surface`, `border`, `ink`,

@@ -8,17 +8,19 @@ import { DEFAULT_MODULE, findModuleBySlug } from "@/lib/modules";
 
 export function DashboardHeader() {
   const pathname = usePathname();
-  const { dataset } = usePygData();
+  const { dataset, mode, views, activeCenterId } = usePygData();
   const slug = pathname.split("/").filter(Boolean)[0];
   const current = findModuleBySlug(slug) ?? DEFAULT_MODULE;
   const isPyg = current.slug === "profit-loss";
 
+  // In multi-center mode the subline names the active view (Consolidado / center / Sin-centro);
+  // a single statement falls back to its own cost-center line, if any.
+  const activeName =
+    mode === "multi" ? views.find((v) => v.id === activeCenterId)?.name : dataset?.costCenterName;
   const client: ActiveClientInfo | undefined = dataset
     ? {
         name: dataset.companyName,
-        period: dataset.costCenterName
-          ? `${dataset.periodLabel} · ${dataset.costCenterName}`
-          : dataset.periodLabel,
+        period: activeName ? `${dataset.periodLabel} · ${activeName}` : dataset.periodLabel,
       }
     : undefined;
 

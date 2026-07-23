@@ -71,8 +71,8 @@ frecuencia, que sí controla los datos mostrados):
 - Leyenda de **semáforo** en la fila de tabs.
 - **Barra de acciones de Datos** (`DatosToolbar`, solo en la tab Datos, bajo la fila de
   filtros): filtro por cuentas mayores (grupo Todos/Ingresos/Costos, "Ocultar ceros",
-  expandir a nivel 1–4/Todo) y acciones de Excel a la derecha — **Cargar Excel** (conectado
-  al pipeline real de carga), menú **Descargar Excel** (Excel con tus datos · Plantilla
+  expandir a nivel 1–4/Todo) y acciones de Excel a la derecha — **Cargar Excel** (abre el
+  modal de carga multi-centro), menú **Descargar Excel** (Excel con tus datos · Plantilla
   vacía, ambos conectados al pipeline de exportación) e ícono de **información** con los
   formatos aceptados.
 
@@ -86,9 +86,10 @@ frecuencia, que sí controla los datos mostrados):
 - **Edición de celdas**: solo las **cuentas de movimiento** (hoja del árbol) editan su valor;
   las **cuentas padre** se calculan desde sus movimientos y solo admiten comentario. Ediciones
   y comentarios persisten en IndexedDB (Dexie) y solo están disponibles en la vista Mensual.
-- **Pestañas de centro de costos** sobre la grilla — hoy **desactivadas** (no se renderizan);
-  los archivos consolidados por centro de costo se rechazan al parsear. Vuelven con el hito
-  de centros de costo.
+- **Pestañas de centro de costos** sobre la grilla (`CostCenterTabs`, solo en modo
+  multi-centro): alternan entre el **Consolidado** (suma de los centros mensuales, solo
+  lectura), cada **centro** (editable en vista Mensual) y **Sin centro de costo** (anual, solo
+  lectura, tomado del archivo consolidado). El subtítulo del header nombra el centro activo.
 - Rendimiento: filas memoizadas (`React.memo`), derivaciones con `useMemo` y
   `content-visibility` en las filas; sin virtualización (aún no hace falta).
 
@@ -98,10 +99,16 @@ El contenido de Gráficos y Análisis aún está en construcción.
 
 ## Carga de Excel (PyG › Datos)
 
-- **Formatos soportados:** reporte mensual (con o sin línea "Centro de Costo") y reporte
-  anual (solo columna Total) del sistema contable. El **consolidado por centros de
-  costo** se detecta y rechaza con un mensaje — su soporte llega con el hito de centros
-  de costo.
+- **Formatos soportados:** reporte mensual (con o sin línea "Centro de Costo"), reporte
+  anual (solo columna Total) y el **consolidado por centros de costo** (columnas GENERAL +
+  centros + Sin centro de costo, valores anuales).
+- **Carga multi-centro (modal de staging):** "Cargar Excel" abre un modal donde arrastras o
+  eliges **varios archivos a la vez**; cada uno se parsea al vuelo y se muestra con su rol
+  detectado (centro / consolidado / estado único). Los archivos se agrupan por **contenido**
+  (línea "Centro de Costo:" + empresa), **nunca por el nombre de archivo** — los reportes
+  reales tienen nombres poco confiables. Los centros salen de las sucursales mensuales; el
+  **Consolidado** se calcula sumándolas; el archivo consolidado aporta **Sin centro de costo**
+  (anual) y valida los cuadres (`Σ centros + Sin-centro = GENERAL`, avisos en un banner).
 - **Mapeo genérico:** el parser lee el esqueleto (preámbulo → cabecera → filas
   `código, nombre, valores` → fila Utilidad), no un plan de cuentas fijo. Las sumas de
   cuentas padre y la fila "Utilidad o Pérdida" (raíces 4 − raíces 5) **siempre se
@@ -129,6 +136,8 @@ El contenido de Gráficos y Análisis aún está en construcción.
     sangría por nivel, moneda a 2 decimales, columna Total, paneles congelados). Cada celda
     editada lleva una **nota** con `Valor original: $X → $Y` (más el comentario si lo hay);
     las celdas solo comentadas llevan su texto. Se exporta siempre en la **frecuencia base**.
+    En **modo multi-centro** genera un libro con **una hoja por centro** (con sus ediciones y
+    comentarios) + la hoja **Consolidado** (suma calculada) + **Sin centro de costo** si existe.
   - **Plantilla vacía:** la misma estructura **sembrada con tus cuentas** (código + nombre)
     y los montos en blanco, para llenar y volver a cargar.
 - **Round-trip:** el archivo "con tus datos" se **vuelve a subir** sin error; los valores se
