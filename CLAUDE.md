@@ -26,9 +26,9 @@ Package manager is **pnpm** (pinned via `packageManager`). Node LTS.
 **Vitest** is configured but runs ONLY the pure layer (`lib/**/*.test.ts`, e.g.
 `lib/profit-loss/`); there are no component/jsdom tests.
 
-CI (`.github/workflows/ci.yml`) runs three independent jobs on PRs and pushes to
-`main`: `pnpm lint`, `pnpm fmt:check`, `pnpm build`. A husky pre-commit hook runs
-`lint-staged` (oxlint --fix + oxfmt on staged files).
+CI (`.github/workflows/ci.yml`) runs four independent jobs on PRs and pushes to
+`main`: `pnpm lint`, `pnpm fmt:check`, `pnpm build`, `pnpm test`. A husky pre-commit
+hook runs `lint-staged` (oxlint --fix + oxfmt on staged files).
 
 ## Toolchain gotchas
 

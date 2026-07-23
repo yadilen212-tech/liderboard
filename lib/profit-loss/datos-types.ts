@@ -53,20 +53,3 @@ export interface DatosSort {
   key: DatosSortKey;
   dir: DatosSortDir;
 }
-
-/** A single edited/commented cell, keyed by `${rowCode}:${monthIndex}` or `:total`. */
-export interface DatosCellEdit {
-  value?: number | null;
-  comment?: string;
-}
-
-/** Identifies the cell an editor is open on. `col` is a month index, or "total". */
-export interface DatosCellRef {
-  code: string;
-  col: number | "total";
-}
-
-/** Builds the map key for a cell reference so edits and lookups agree. */
-export function cellKey(code: string, col: number | "total"): string {
-  return `${code}:${col}`;
-}

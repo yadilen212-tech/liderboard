@@ -1,6 +1,6 @@
 /**
  * Pure derivations for the Datos table. Kept out of the components so the expensive
- * work (applying edits, flattening the tree, sorting) can be wrapped in `useMemo` and
+ * work (flattening the tree, sorting, totals) can be wrapped in `useMemo` and
  * unit-reasoned in isolation.
  */
 import { formatCurrency } from "@/lib/format";

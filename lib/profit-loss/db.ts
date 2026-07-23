@@ -39,12 +39,9 @@ export async function replaceDataset(dataset: PygDataset): Promise<void> {
  * &[datasetId+code+monthIndex] index (which two writes did in the browser).
  */
 export async function saveCellEdit(edit: Omit<CellEdit, "id" | "updatedAt">): Promise<void> {
-  const key = [edit.datasetId, edit.code, edit.monthIndex] as const;
+  const key: [string, string, number] = [edit.datasetId, edit.code, edit.monthIndex];
   await db.transaction("rw", db.edits, async () => {
-    const existing = await db.edits
-      .where("[datasetId+code+monthIndex]")
-      .equals(key as unknown as [string, string, number])
-      .first();
+    const existing = await db.edits.where("[datasetId+code+monthIndex]").equals(key).first();
 
     const isEmpty = edit.value === undefined && !edit.comment;
     if (isEmpty) {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { MONTHS_SHORT_ES } from "@/lib/date";
 import type { DatosGrid, DatosRow, DatosSort, DatosSortKey } from "@/lib/profit-loss/datos-types";
 import { toDatosGrid } from "@/lib/profit-loss/derive";
@@ -55,6 +55,20 @@ export function DatosView() {
     () => flattenSorted(grid.rows, collapsed, sort),
     [grid.rows, collapsed, sort],
   );
+
+  // A newly loaded dataset should surface its own warnings even if the previous file's
+  // banner was dismissed.
+  useEffect(() => {
+    setWarningsDismissed(false);
+  }, [dataset?.id]);
+
+  // Aggregating to fewer columns (e.g. Mensual → Trimestral) can strand a month-column
+  // sort on a column that no longer exists; clear it so the grid isn't "sorted" by nothing.
+  useEffect(() => {
+    setSort((prev) =>
+      prev && typeof prev.key === "object" && prev.key.col >= grid.months.length ? null : prev,
+    );
+  }, [grid.months.length]);
 
   // Value edits and comments only make sense against a concrete month.
   const editable = Boolean(dataset) && effectiveFrequency === "mensual";
