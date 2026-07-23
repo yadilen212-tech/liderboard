@@ -37,13 +37,9 @@ function DatosTableRowImpl({
   onEditCell,
 }: DatosTableRowProps) {
   const emphasized = row.isResult || row.level === 1;
-  const nameWeight = row.isResult
-    ? "font-bold"
-    : row.level === 1
-      ? "font-semibold"
-      : row.level === 2
-        ? "font-medium"
-        : "font-normal";
+  // Weight by role, not depth: parent (summary) accounts stand out; movement (leaf,
+  // editable) accounts stay plain so they read as the detail rows you fill in.
+  const nameWeight = row.isResult ? "font-bold" : row.movement ? "font-normal" : "font-semibold";
   const paddingLeft = row.isResult ? BASE_INDENT : BASE_INDENT + (row.level - 1) * INDENT_STEP;
 
   // The result row is fully derived (no editor). Movement accounts (leaves) edit their

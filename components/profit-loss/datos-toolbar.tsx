@@ -22,8 +22,9 @@ export function DatosToolbar() {
     () => (accounts ? matchExpandLevel(accounts, collapsed, deepestLevel) : null),
     [accounts, collapsed, deepestLevel],
   );
+  // One button per real level, 1..deepest. The deepest is the fully-expanded state.
   const expandLevels =
-    deepestLevel >= 2 ? Array.from({ length: deepestLevel - 1 }, (_, i) => i + 1) : [];
+    deepestLevel >= 2 ? Array.from({ length: deepestLevel }, (_, i) => i + 1) : [];
 
   return (
     <div className="flex shrink-0 flex-wrap items-center gap-2.5 border-b border-border bg-surface-sunken px-7 py-2.5">
@@ -43,13 +44,6 @@ export function DatosToolbar() {
                 {level}
               </LevelButton>
             ))}
-            <LevelButton
-              active={activeExpand === "all"}
-              onClick={() => setExpandLevel("all")}
-              className="px-[11px]"
-            >
-              Todo
-            </LevelButton>
           </div>
         </>
       )}

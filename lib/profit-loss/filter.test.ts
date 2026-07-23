@@ -157,8 +157,8 @@ describe("collapsedForLevel", () => {
 describe("matchExpandLevel", () => {
   const deepest = deepestLevel(MONTHLY_ACCOUNTS);
 
-  it("maps an empty collapsed set to fully expanded", () => {
-    expect(matchExpandLevel(MONTHLY_ACCOUNTS, new Set(), deepest)).toBe("all");
+  it("maps an empty collapsed set to the deepest level (fully expanded)", () => {
+    expect(matchExpandLevel(MONTHLY_ACCOUNTS, new Set(), deepest)).toBe(deepest);
   });
 
   it("maps a level's collapsed set back to that level", () => {

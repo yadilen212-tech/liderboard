@@ -122,16 +122,17 @@ export function collapsedForLevel(accounts: AccountRow[], level: number): Set<st
   return out;
 }
 
-/** Which Expandir button is active for the current collapse state, or null if custom. */
+/**
+ * Which Expandir level (1..deepest) is active for the current collapse state, or null if
+ * custom. Level `deepest` is the fully-expanded state (its collapse set is empty, since the
+ * deepest accounts are leaves with nothing to collapse).
+ */
 export function matchExpandLevel(
   accounts: AccountRow[],
   collapsed: ReadonlySet<string>,
   deepest: number,
-): number | "all" | null {
-  if (collapsed.size === 0) {
-    return "all";
-  }
-  for (let level = 1; level < deepest; level++) {
+): number | null {
+  for (let level = 1; level <= deepest; level++) {
     if (setsEqual(collapsed, collapsedForLevel(accounts, level))) {
       return level;
     }
