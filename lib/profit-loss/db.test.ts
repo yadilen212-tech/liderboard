@@ -1,6 +1,6 @@
 import "fake-indexeddb/auto";
 import { beforeEach, describe, expect, it } from "vitest";
-import { db, replaceDataset, saveCellEdit } from "./db";
+import { db, getWorkspaceMeta, replaceDataset, replaceWorkspace, saveCellEdit } from "./db";
 import type { PygDataset } from "./types";
 
 function dataset(id: string): PygDataset {
@@ -19,9 +19,14 @@ function dataset(id: string): PygDataset {
   };
 }
 
+function center(id: string, centerId: string): PygDataset {
+  return { ...dataset(id), role: "center", centerId, order: 0, centerColor: "#000" };
+}
+
 beforeEach(async () => {
   await db.edits.clear();
   await db.datasets.clear();
+  await db.meta.clear();
 });
 
 describe("replaceDataset", () => {
@@ -87,5 +92,42 @@ describe("saveCellEdit", () => {
     ]);
     const stored = await db.edits.toArray();
     expect(stored).toHaveLength(1);
+  });
+});
+
+describe("replaceWorkspace", () => {
+  it("stores several datasets + meta and clears the previous workspace", async () => {
+    await replaceWorkspace(
+      [center("a", "norte"), center("b", "sur")],
+      { companyName: "ACME", warnings: ["w"], activeCenterId: "consolidado" },
+      [
+        { datasetId: "a", comments: [{ code: "4", monthIndex: 0, comment: "hola" }] },
+        { datasetId: "b", comments: [] },
+      ],
+    );
+    expect(await db.datasets.count()).toBe(2);
+    const meta = await getWorkspaceMeta();
+    expect(meta?.companyName).toBe("ACME");
+    expect(meta?.activeCenterId).toBe("consolidado");
+    const seeded = await db.edits.where("datasetId").equals("a").toArray();
+    expect(seeded).toHaveLength(1);
+    expect(seeded[0].comment).toBe("hola");
+  });
+
+  it("wipes datasets, edits and meta of the prior workspace", async () => {
+    await replaceWorkspace(
+      [center("a", "norte")],
+      { companyName: "ACME", warnings: [], activeCenterId: "consolidado" },
+      [{ datasetId: "a", comments: [] }],
+    );
+    await saveCellEdit({ datasetId: "a", code: "4", monthIndex: 0, value: 1 });
+    await replaceWorkspace(
+      [center("z", "z")],
+      { companyName: "OTHER", warnings: [], activeCenterId: "consolidado" },
+      [{ datasetId: "z", comments: [] }],
+    );
+    expect((await db.datasets.toArray()).map((d) => d.id)).toEqual(["z"]);
+    expect(await db.edits.count()).toBe(0);
+    expect((await getWorkspaceMeta())?.companyName).toBe("OTHER");
   });
 });

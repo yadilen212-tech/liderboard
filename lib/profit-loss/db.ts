@@ -5,10 +5,17 @@
  */
 import Dexie, { type Table } from "dexie";
 import type { CellEdit, ImportedComment, PygDataset } from "./types";
+import type { WorkspaceMeta } from "./workspace";
+
+/** Singleton workspace metadata row (company, warnings, active selector id). */
+interface WorkspaceMetaRow extends WorkspaceMeta {
+  key: "workspace";
+}
 
 class PygDb extends Dexie {
   datasets!: Table<PygDataset, string>;
   edits!: Table<CellEdit, number>;
+  meta!: Table<WorkspaceMetaRow, string>;
 
   constructor() {
     super("liderboard-pyg");
@@ -16,37 +23,87 @@ class PygDb extends Dexie {
       datasets: "id",
       edits: "++id, datasetId, &[datasetId+code+monthIndex]",
     });
+    // v2: datasets may hold several rows (a workspace); add the meta singleton.
+    // Existing v1 datasets are stamped role:"single" so they keep working.
+    this.version(2)
+      .stores({
+        datasets: "id, role, order",
+        edits: "++id, datasetId, &[datasetId+code+monthIndex]",
+        meta: "key",
+      })
+      .upgrade(async (tx) => {
+        await tx
+          .table<PygDataset>("datasets")
+          .toCollection()
+          .modify((d) => {
+            if (!d.role) {
+              d.role = "single";
+            }
+          });
+      });
   }
 }
 
 export const db = new PygDb();
 
 /**
- * Atomically replaces the active dataset and clears every edit. Comments recovered from
- * an app-exported file's metadata sheet are re-seeded as comment-only edits on the new
- * dataset (value edits are already baked into its values, so they are not restored).
+ * Atomically replaces the whole workspace: clears datasets/edits/meta, inserts the new
+ * datasets, writes the meta singleton, and re-seeds imported comments as comment-only edits
+ * per dataset (value edits are already baked into each dataset's values).
  */
+export async function replaceWorkspace(
+  datasets: PygDataset[],
+  meta: WorkspaceMeta,
+  commentsByDataset: { datasetId: string; comments: ImportedComment[] }[] = [],
+): Promise<void> {
+  await db.transaction("rw", db.datasets, db.edits, db.meta, async () => {
+    await db.edits.clear();
+    await db.datasets.clear();
+    await db.meta.clear();
+    await db.datasets.bulkAdd(datasets);
+    await db.meta.add({ key: "workspace", ...meta });
+    const now = Date.now();
+    const seeds = commentsByDataset.flatMap(({ datasetId, comments }) =>
+      comments.map((c) => ({
+        datasetId,
+        code: c.code,
+        monthIndex: c.monthIndex,
+        comment: c.comment,
+        updatedAt: now,
+      })),
+    );
+    if (seeds.length > 0) {
+      await db.edits.bulkAdd(seeds);
+    }
+  });
+}
+
+export async function getWorkspaceMeta(): Promise<WorkspaceMeta | undefined> {
+  const row = await db.meta.get("workspace");
+  if (!row) {
+    return undefined;
+  }
+  const { key: _key, ...meta } = row;
+  return meta;
+}
+
+export async function saveActiveCenter(activeCenterId: string): Promise<void> {
+  const row = await db.meta.get("workspace");
+  if (row) {
+    await db.meta.put({ ...row, activeCenterId });
+  }
+}
+
+/** Back-compat single-statement helper: one dataset, single mode. */
 export async function replaceDataset(
   dataset: PygDataset,
   comments: ImportedComment[] = [],
 ): Promise<void> {
-  await db.transaction("rw", db.datasets, db.edits, async () => {
-    await db.edits.clear();
-    await db.datasets.clear();
-    await db.datasets.add(dataset);
-    if (comments.length > 0) {
-      const now = Date.now();
-      await db.edits.bulkAdd(
-        comments.map((comment) => ({
-          datasetId: dataset.id,
-          code: comment.code,
-          monthIndex: comment.monthIndex,
-          comment: comment.comment,
-          updatedAt: now,
-        })),
-      );
-    }
-  });
+  await replaceWorkspace(
+    [{ ...dataset, role: "single" }],
+    { companyName: dataset.companyName, warnings: dataset.warnings, activeCenterId: dataset.id },
+    [{ datasetId: dataset.id, comments }],
+  );
 }
 
 /**
