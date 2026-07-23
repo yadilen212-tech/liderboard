@@ -3,6 +3,7 @@
 import { ChevronDown, FilePlus2, FileSpreadsheet, Info, Loader2, Upload } from "lucide-react";
 import { type ReactNode, useCallback, useMemo, useState } from "react";
 import { cn } from "@/lib/cn";
+import { db } from "@/lib/profit-loss/db";
 import { matchExpandLevel } from "@/lib/profit-loss/filter";
 import { CostCenterUploadModal } from "./cost-center-upload-modal";
 import { usePygData } from "./pyg-data-provider";
@@ -105,7 +106,7 @@ type ExportKind = "data" | "template";
  * layer (kept out of the initial bundle), then trigger a browser download.
  */
 function DownloadMenu() {
-  const { dataset, edits } = usePygData();
+  const { dataset, edits, views, mode } = usePygData();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState<ExportKind | null>(null);
   const [failed, setFailed] = useState(false);
@@ -122,10 +123,28 @@ function DownloadMenu() {
           import("@/lib/profit-loss/export"),
           import("@/lib/download"),
         ]);
-        const workbook =
-          kind === "data" && dataset
-            ? exportMod.buildPygWorkbook(dataset, edits)
-            : exportMod.buildBlankTemplate(dataset);
+        let workbook: import("exceljs").Workbook;
+        if (kind === "template") {
+          workbook = exportMod.buildBlankTemplate(dataset);
+        } else if (mode === "multi") {
+          const centers = views.filter((v) => v.role === "center");
+          const sinView = views.find((v) => v.role === "sin-centro");
+          const withEdits = await Promise.all(
+            centers.map(async (v) => ({
+              dataset: v.dataset,
+              edits: await db.edits.where("datasetId").equals(v.dataset.id).toArray(),
+            })),
+          );
+          workbook = exportMod.buildMultiCenterWorkbook({
+            companyName: dataset?.companyName ?? "LiderPlus",
+            centers: withEdits,
+            sinCentro: sinView?.dataset,
+          });
+        } else if (dataset) {
+          workbook = exportMod.buildPygWorkbook(dataset, edits);
+        } else {
+          return;
+        }
         const blob = await exportMod.workbookToBlob(workbook);
         downloadBlob(blob, exportMod.pygExportFilename(dataset, kind));
         setOpen(false);
@@ -135,7 +154,7 @@ function DownloadMenu() {
         setBusy(null);
       }
     },
-    [busy, dataset, edits],
+    [busy, dataset, edits, views, mode],
   );
 
   return (
@@ -168,7 +187,11 @@ function DownloadMenu() {
           <DownloadItem
             icon={<FileSpreadsheet size={17} className="text-brand" />}
             title="Excel con tus datos"
-            description="El estado con los valores y comentarios actuales"
+            description={
+              mode === "multi"
+                ? "Una hoja por centro + la hoja consolidada"
+                : "El estado con los valores y comentarios actuales"
+            }
             onClick={() => runExport("data")}
             disabled={!dataset}
             busy={busy === "data"}
