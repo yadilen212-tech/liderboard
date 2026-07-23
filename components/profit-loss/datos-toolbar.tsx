@@ -1,9 +1,18 @@
 "use client";
 
-import { ChevronDown, EyeOff, FilePlus2, FileSpreadsheet, Info, Upload } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import {
+  ChevronDown,
+  EyeOff,
+  FilePlus2,
+  FileSpreadsheet,
+  Info,
+  Loader2,
+  Upload,
+} from "lucide-react";
+import { type ReactNode, useRef, useState } from "react";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { cn } from "@/lib/cn";
+import { usePygData } from "./pyg-data-provider";
 
 type Group = "todos" | "ingresos" | "costos";
 type Level = "1" | "2" | "3" | "4" | "todo";
@@ -20,13 +29,15 @@ const LEVELS = ["1", "2", "3", "4"] as const;
  * Datos-tab action bar (visual only), rendered under the FILTROS row for
  * Pérdidas y Ganancias › Datos. Left: the "cuentas mayores" filters — account
  * group, hide-zeros, and expand-to-level. Right: the Excel actions — upload,
- * a download menu, and an accepted-files info tip. All state is UI-local; the
- * upload button is a placeholder ready to receive real logic.
+ * a download menu, and an accepted-files info tip. Filter state is UI-local;
+ * the upload button drives the real pipeline via usePygData().
  */
 export function DatosToolbar() {
   const [group, setGroup] = useState<Group>("todos");
   const [hideZeros, setHideZeros] = useState(false);
   const [level, setLevel] = useState<Level | null>(null);
+  const { uploadFile, isUploading } = usePygData();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   return (
     <div className="flex shrink-0 flex-wrap items-center gap-2.5 border-b border-border bg-surface-sunken px-7 py-2.5">
@@ -79,15 +90,28 @@ export function DatosToolbar() {
       </div>
 
       <div className="ml-auto flex items-center gap-2.5">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".xls,.xlsx"
+          className="hidden"
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (file) {
+              void uploadFile(file);
+            }
+            // Allow re-selecting the same file after an error or replacement.
+            event.target.value = "";
+          }}
+        />
         <button
           type="button"
-          onClick={() => {
-            // TODO: wire up Excel / ZIP upload
-          }}
-          className="inline-flex h-[34px] items-center gap-2 rounded-[8px] bg-brand px-[13px] text-[12.5px] font-semibold text-white transition-colors hover:bg-brand-hover"
+          disabled={isUploading}
+          onClick={() => fileInputRef.current?.click()}
+          className="inline-flex h-[34px] items-center gap-2 rounded-[8px] bg-brand px-[13px] text-[12.5px] font-semibold text-white transition-colors hover:bg-brand-hover disabled:cursor-wait disabled:opacity-70"
         >
-          <Upload size={14} />
-          Cargar Excel / ZIP
+          {isUploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+          {isUploading ? "Procesando…" : "Cargar Excel"}
         </button>
 
         <DownloadMenu />
@@ -228,8 +252,9 @@ function InfoTip() {
             <Info size={13} />
             Archivos aceptados
           </div>
-          Acepta el Excel crudo del sistema contable o uno editado por la app (restaura valores y
-          comentarios).
+          Acepta el reporte mensual o anual del sistema contable (con o sin línea de centro de
+          costo), o uno editado por la app. El consolidado por centros de costo estará disponible
+          próximamente.
         </div>
       )}
     </div>
