@@ -68,7 +68,8 @@ interface PygDataValue {
     value: number | null | undefined,
     comment: string,
   ) => Promise<void>;
-  /** Depth of the deepest movement account; 0 with no dataset. Bounds Nivel/Expandir. */
+  /** Depth of the deepest movement account across ALL files in the workspace; 0 with no
+   * dataset. Bounds the "Nivel" filter options. */
   deepestLevel: number;
   /** Accounts of the active view as "Cuenta contable" options; [] with no dataset. */
   accountOptions: AccountOption[];
@@ -76,10 +77,7 @@ interface PygDataValue {
   selectedAccounts: Set<string>;
   toggleAccount: (code: string) => void;
   clearAccounts: () => void;
-  /** "Mostrar hasta nivel" depth cap; null = all levels. */
-  maxLevel: number | null;
-  setMaxLevel: (level: number | null) => void;
-  /** Datos tree collapse state; shared so Expandir and per-row toggles agree. */
+  /** Datos tree collapse state; shared so the "Nivel" filter and per-row toggles agree. */
   collapsed: Set<string>;
   toggleCollapsed: (code: string) => void;
   setExpandLevel: (level: number | "all") => void;
@@ -108,7 +106,6 @@ export function PygDataProvider({ children }: { children: ReactNode }) {
 
   const [frequency, setFrequencyState] = useState<Frequency>("mensual");
   const [selectedAccounts, setSelectedAccounts] = useState<Set<string>>(() => new Set());
-  const [maxLevel, setMaxLevelState] = useState<number | null>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
   const [activeCenterId, setActiveCenterId] = useState<string>(CONSOLIDADO_ID);
 
@@ -144,7 +141,6 @@ export function PygDataProvider({ children }: { children: ReactNode }) {
   }, [workspaceKey, base]);
   useEffect(() => {
     setSelectedAccounts(new Set());
-    setMaxLevelState(null);
     setCollapsed(new Set());
   }, [workspaceKey]);
 
@@ -153,7 +149,12 @@ export function PygDataProvider({ children }: { children: ReactNode }) {
     setFrequencyState((prev) => (allowed.includes(prev) ? prev : (base ?? prev)));
   }, [resolvedActiveId, allowed, base]);
 
-  const deepest = useMemo(() => (accounts ? deepestLevel(accounts) : 0), [accounts]);
+  // The deepest movement account across ALL files in the workspace (not just the active
+  // view) — so the Nivel options are stable across center tabs and reflect the deepest Excel.
+  const deepest = useMemo(
+    () => datasets.reduce((max, d) => Math.max(max, deepestLevel(d.accounts)), 0),
+    [datasets],
+  );
   const options = useMemo(() => (accounts ? accountOptions(accounts) : []), [accounts]);
 
   const setFrequency = useCallback(
@@ -178,8 +179,6 @@ export function PygDataProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const clearAccounts = useCallback(() => setSelectedAccounts(new Set()), []);
-
-  const setMaxLevel = useCallback((level: number | null) => setMaxLevelState(level), []);
 
   const toggleCollapsed = useCallback((code: string) => {
     setCollapsed((current) => {
@@ -245,8 +244,6 @@ export function PygDataProvider({ children }: { children: ReactNode }) {
       selectedAccounts,
       toggleAccount,
       clearAccounts,
-      maxLevel,
-      setMaxLevel,
       collapsed,
       toggleCollapsed,
       setExpandLevel,
@@ -269,8 +266,6 @@ export function PygDataProvider({ children }: { children: ReactNode }) {
       selectedAccounts,
       toggleAccount,
       clearAccounts,
-      maxLevel,
-      setMaxLevel,
       collapsed,
       toggleCollapsed,
       setExpandLevel,

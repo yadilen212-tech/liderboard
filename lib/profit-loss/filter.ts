@@ -70,37 +70,6 @@ function keepFocused(
 }
 
 /**
- * "Mostrar hasta nivel N": strip children from nodes at `level >= maxLevel` so nothing
- * deeper shows. Their amounts already rolled up into the capped node. `null` is a no-op.
- */
-export function capToLevel(rows: DatosRow[], maxLevel: number | null): DatosRow[] {
-  if (maxLevel === null) {
-    return rows;
-  }
-  return rows.map((row) => capNode(row, maxLevel));
-}
-
-function capNode(node: DatosRow, maxLevel: number): DatosRow {
-  if (!node.children?.length) {
-    return node;
-  }
-  if (node.level >= maxLevel) {
-    const stripped: DatosRow = { ...node };
-    delete stripped.children;
-    return stripped;
-  }
-  return { ...node, children: node.children.map((child) => capNode(child, maxLevel)) };
-}
-
-/** Account focus then depth cap — the order the Datos view applies them. */
-export function filterDatosRows(
-  rows: DatosRow[],
-  { selected, maxLevel }: { selected: ReadonlySet<string>; maxLevel: number | null },
-): DatosRow[] {
-  return capToLevel(focusAccounts(rows, selected), maxLevel);
-}
-
-/**
  * Codes to collapse so the tree shows expanded down to `level`: every parent node at
  * `level >= level` (its children hide). "Todo"/fully-expanded is an empty set (handled by
  * the caller), never this function.
@@ -123,9 +92,10 @@ export function collapsedForLevel(accounts: AccountRow[], level: number): Set<st
 }
 
 /**
- * Which Expandir level (1..deepest) is active for the current collapse state, or null if
+ * Which "Nivel" level (1..deepest) is active for the current collapse state, or null if
  * custom. Level `deepest` is the fully-expanded state (its collapse set is empty, since the
- * deepest accounts are leaves with nothing to collapse).
+ * deepest accounts are leaves with nothing to collapse); the "Nivel" filter surfaces that as
+ * "Todos los niveles".
  */
 export function matchExpandLevel(
   accounts: AccountRow[],

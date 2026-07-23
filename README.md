@@ -64,17 +64,19 @@ frecuencia, que sí controla los datos mostrados):
 
 - El **nombre del cliente activo** se muestra en el header del módulo (`ActiveClient`),
   con estado vacío mientras no se carga un Excel.
-- **Sección de filtros** bajo las tabs: cuenta contable, nivel, centro de costos,
+- **Sección de filtros** bajo las tabs: cuenta contable, **nivel** (único control de
+  profundidad del árbol: expande/colapsa hasta el nivel elegido, o "Todos los niveles"; el
+  máximo es el nivel más profundo de **todos** los archivos del workspace), centro de costos,
   granularidad (Ver por) y período. La lista de cuentas y los centros de costo se leen del
   Excel que se sube, por lo que hoy muestran un **estado vacío** listo para poblarse.
 - **Recuadro "Comparar por"** en Gráficos y Análisis (colapsable, cerrado por defecto).
 - Leyenda de **semáforo** en la fila de tabs.
 - **Barra de acciones de Datos** (`DatosToolbar`, solo en la tab Datos, bajo la fila de
-  filtros): filtro por cuentas mayores (grupo Todos/Ingresos/Costos, "Ocultar ceros",
-  expandir a nivel 1–4/Todo) y acciones de Excel a la derecha — **Cargar Excel** (abre el
-  modal de carga multi-centro), menú **Descargar Excel** (Excel con tus datos · Plantilla
-  vacía, ambos conectados al pipeline de exportación) e ícono de **información** con los
-  formatos aceptados.
+  filtros): las acciones de Excel a la derecha — **Cargar Excel** (abre el modal de carga
+  multi-centro), menú **Descargar Excel** (Excel con tus datos · Plantilla vacía, ambos
+  conectados al pipeline de exportación) e ícono de **información** con los formatos
+  aceptados. (La profundidad del árbol se controla desde el filtro **nivel** de la fila de
+  filtros; el drill-down por fila con los chevrons de la grilla sigue disponible.)
 
 **Tabla de Datos de PyG** (`DatosView` en la tab Datos) — el estado de resultados editable:
 

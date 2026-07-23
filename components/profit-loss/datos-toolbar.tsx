@@ -1,54 +1,22 @@
 "use client";
 
 import { ChevronDown, FilePlus2, FileSpreadsheet, Info, Loader2, Upload } from "lucide-react";
-import { type ReactNode, useCallback, useMemo, useState } from "react";
+import { type ReactNode, useCallback, useState } from "react";
 import { cn } from "@/lib/cn";
 import { db } from "@/lib/profit-loss/db";
-import { matchExpandLevel } from "@/lib/profit-loss/filter";
 import { CostCenterUploadModal } from "./cost-center-upload-modal";
 import { usePygData } from "./pyg-data-provider";
 
 /**
  * Datos-tab action bar, rendered under the FILTROS row for Pérdidas y Ganancias › Datos.
- * Left: "Expandir" — collapse/expand the tree down to a level (its range derived from the
- * file's deepest movement account; hidden with no data or a flat file). Right: the Excel
- * actions — upload, a download menu, and an accepted-files info tip.
+ * The Excel actions — upload, a download menu, and an accepted-files info tip. Tree depth is
+ * controlled by the shared "Nivel" filter in the FILTROS row (see PygToolbar).
  */
 export function DatosToolbar() {
-  const { dataset, deepestLevel, collapsed, setExpandLevel } = usePygData();
   const [uploadOpen, setUploadOpen] = useState(false);
-
-  const accounts = dataset?.accounts;
-  const activeExpand = useMemo(
-    () => (accounts ? matchExpandLevel(accounts, collapsed, deepestLevel) : null),
-    [accounts, collapsed, deepestLevel],
-  );
-  // One button per real level, 1..deepest. The deepest is the fully-expanded state.
-  const expandLevels =
-    deepestLevel >= 2 ? Array.from({ length: deepestLevel }, (_, i) => i + 1) : [];
 
   return (
     <div className="flex shrink-0 flex-wrap items-center gap-2.5 border-b border-border bg-surface-sunken px-7 py-2.5">
-      {expandLevels.length > 0 && (
-        <>
-          <span className="text-[10.5px] font-semibold uppercase tracking-[0.6px] text-faintest">
-            Expandir
-          </span>
-          <div className="flex items-center gap-1.5">
-            {expandLevels.map((level) => (
-              <LevelButton
-                key={level}
-                active={activeExpand === level}
-                onClick={() => setExpandLevel(level)}
-                className="w-[30px]"
-              >
-                {level}
-              </LevelButton>
-            ))}
-          </div>
-        </>
-      )}
-
       <div className="ml-auto flex items-center gap-2.5">
         <button
           type="button"
@@ -65,36 +33,6 @@ export function DatosToolbar() {
 
       <CostCenterUploadModal open={uploadOpen} onClose={() => setUploadOpen(false)} />
     </div>
-  );
-}
-
-/** A square expand-to-level button; `active` fills it with the brand color. */
-function LevelButton({
-  active,
-  onClick,
-  className,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  className?: string;
-  children: ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      aria-pressed={active}
-      onClick={onClick}
-      className={cn(
-        "flex h-[30px] items-center justify-center rounded-[7px] border text-[12.5px] font-semibold transition-colors",
-        active
-          ? "border-brand bg-brand text-white"
-          : "border-border bg-surface text-muted hover:border-faint",
-        className,
-      )}
-    >
-      {children}
-    </button>
   );
 }
 

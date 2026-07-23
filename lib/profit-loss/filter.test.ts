@@ -2,10 +2,8 @@ import { describe, expect, it } from "vitest";
 import type { DatosRow } from "./datos-types";
 import {
   accountOptions,
-  capToLevel,
   collapsedForLevel,
   deepestLevel,
-  filterDatosRows,
   focusAccounts,
   matchExpandLevel,
 } from "./filter";
@@ -105,39 +103,6 @@ describe("focusAccounts", () => {
     const rows = sampleRows();
     const kept = focusAccounts(rows, new Set(["4"]));
     expect(kept[0]).toBe(rows[0]);
-  });
-});
-
-describe("capToLevel", () => {
-  it("returns the same rows when maxLevel is null", () => {
-    const rows = sampleRows();
-    expect(capToLevel(rows, null)).toBe(rows);
-  });
-
-  it("drops rows deeper than the cap", () => {
-    const capped = capToLevel(sampleRows(), 2);
-    expect(codes(capped)).toEqual(["4", "4.1", "4.2", "5", "5.1"]);
-  });
-
-  it("cap at 1 leaves only the roots", () => {
-    const capped = capToLevel(sampleRows(), 1);
-    expect(codes(capped)).toEqual(["4", "5"]);
-  });
-
-  it("leaves the result row untouched", () => {
-    const capped = capToLevel([...sampleRows(), RESULT_ROW], 1);
-    expect(capped.at(-1)).toBe(RESULT_ROW);
-  });
-});
-
-describe("filterDatosRows", () => {
-  it("composes account focus then depth cap", () => {
-    const filtered = filterDatosRows(sampleRows(), {
-      selected: new Set(["5"]),
-      maxLevel: 3,
-    });
-    // Focus to the 5 branch, then hide level-4 (5.1.2.1).
-    expect(codes(filtered)).toEqual(["5", "5.1", "5.1.1", "5.1.2"]);
   });
 });
 

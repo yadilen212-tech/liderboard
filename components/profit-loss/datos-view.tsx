@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { MONTHS_SHORT_ES } from "@/lib/date";
 import type { DatosGrid, DatosRow, DatosSort, DatosSortKey } from "@/lib/profit-loss/datos-types";
 import { toDatosGrid } from "@/lib/profit-loss/derive";
-import { filterDatosRows } from "@/lib/profit-loss/filter";
+import { focusAccounts } from "@/lib/profit-loss/filter";
 import { CellEditor, type EditorAnchor } from "./cell-editor";
 import { CostCenterTabs } from "./cost-center-tabs";
 import { flattenSorted } from "./datos-utils";
@@ -46,7 +46,6 @@ export function DatosView() {
     setActiveCenter,
     warnings,
     selectedAccounts,
-    maxLevel,
     collapsed,
     toggleCollapsed,
   } = usePygData();
@@ -66,10 +65,11 @@ export function DatosView() {
     () => (dataset ? toDatosGrid(dataset, edits, effectiveFrequency) : EMPTY_GRID),
     [dataset, edits, effectiveFrequency],
   );
-  // Account focus + level cap decide which rows show; amounts (and Utilidad) are untouched.
+  // Account focus decides which rows show; amounts (and Utilidad) are untouched. Depth is
+  // handled by the collapse state (`collapsed`, from the "Nivel" filter + per-row toggles).
   const filteredRows = useMemo(
-    () => filterDatosRows(grid.rows, { selected: selectedAccounts, maxLevel }),
-    [grid.rows, selectedAccounts, maxLevel],
+    () => focusAccounts(grid.rows, selectedAccounts),
+    [grid.rows, selectedAccounts],
   );
   const visibleRows = useMemo(
     () => flattenSorted(filteredRows, collapsed, sort),
