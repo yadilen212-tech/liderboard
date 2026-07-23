@@ -94,18 +94,6 @@ export async function saveActiveCenter(activeCenterId: string): Promise<void> {
   }
 }
 
-/** Back-compat single-statement helper: one dataset, single mode. */
-export async function replaceDataset(
-  dataset: PygDataset,
-  comments: ImportedComment[] = [],
-): Promise<void> {
-  await replaceWorkspace(
-    [{ ...dataset, role: "single" }],
-    { companyName: dataset.companyName, warnings: dataset.warnings, activeCenterId: dataset.id },
-    [{ datasetId: dataset.id, comments }],
-  );
-}
-
 /**
  * Upserts one cell's override. An edit with no value and no comment means "back to
  * original" — the record is deleted, keeping the edits table a true diff.

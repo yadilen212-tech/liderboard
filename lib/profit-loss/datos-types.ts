@@ -44,13 +44,6 @@ export interface DatosGrid {
   rows: DatosRow[];
 }
 
-/** A cost center the Datos view can switch between (mock today; from Excel later). */
-export interface CostCenter {
-  id: string;
-  name: string;
-  color: string;
-}
-
 /** Which column the table is sorted by: the name column, or a data-column index. */
 export type DatosSortKey = "name" | { col: number } | "total";
 export type DatosSortDir = "asc" | "desc";

@@ -133,7 +133,7 @@ export function DatosView() {
       )}
 
       {warnings.length > 0 && !warningsDismissed && (
-        <NoticeBanner tone="warning" onDismiss={() => setWarningsDismissed(true)}>
+        <NoticeBanner onDismiss={() => setWarningsDismissed(true)}>
           El espacio de trabajo tiene {warnings.length} {warnings.length === 1 ? "aviso" : "avisos"}{" "}
           de cuadre; se muestran los valores tal cual.
         </NoticeBanner>

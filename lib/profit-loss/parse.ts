@@ -36,11 +36,6 @@ interface ConsolidatedColumns {
 }
 type ColumnClassification = StatementColumns | ConsolidatedColumns;
 
-export async function parsePygFile(file: File): Promise<PygParseResult> {
-  const buffer = await file.arrayBuffer();
-  return parsePygWorkbook(buffer, file.name);
-}
-
 export function parsePygWorkbook(data: ArrayBuffer, fileName: string): PygParseResult {
   const workbook = readWorkbook(data);
   const grid = readGrid(workbook, workbook.SheetNames[0]);
