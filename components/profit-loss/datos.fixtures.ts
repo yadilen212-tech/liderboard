@@ -11,7 +11,7 @@
  */
 import { MONTHS_SHORT_ES } from "@/lib/date";
 import { formatCurrency } from "@/lib/format";
-import type { CostCenter, DatosGrid, DatosRow } from "./datos-types";
+import type { CostCenter, DatosGrid, DatosRow } from "@/lib/profit-loss/datos-types";
 
 /** Cost-center palette from the design (`_ccColorMap`). */
 const CC_PALETTE = ["#1e3a5f", "#0e7490", "#d97706", "#16a34a", "#7c3aed", "#dc2626"];

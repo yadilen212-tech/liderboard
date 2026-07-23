@@ -2,7 +2,7 @@
 
 import { Info } from "lucide-react";
 import { cn } from "@/lib/cn";
-import type { CostCenter } from "./datos-types";
+import type { CostCenter } from "@/lib/profit-loss/datos-types";
 
 /**
  * The "Centro de costos" tab strip that sits above the Datos grid: one pill per center,

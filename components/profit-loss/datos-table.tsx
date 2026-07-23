@@ -12,7 +12,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { cn } from "@/lib/cn";
 import type { EditorAnchor } from "./cell-editor";
 import { DatosTableRow } from "./datos-table-row";
-import type { DatosGrid, DatosSort, DatosSortKey } from "./datos-types";
+import type { DatosGrid, DatosSort, DatosSortKey } from "@/lib/profit-loss/datos-types";
 import type { FlatRow } from "./datos-utils";
 
 export interface DatosTableProps {

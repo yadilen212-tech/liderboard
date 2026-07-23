@@ -12,7 +12,7 @@ import {
   type DatosRow,
   type DatosSort,
   type DatosSortKey,
-} from "./datos-types";
+} from "@/lib/profit-loss/datos-types";
 import { MONTHS_SHORT_ES } from "@/lib/date";
 import { applyEdits, flattenSorted } from "./datos-utils";
 import { MOCK_COST_CENTERS } from "./datos.fixtures";

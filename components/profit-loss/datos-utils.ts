@@ -4,7 +4,12 @@
  * unit-reasoned in isolation.
  */
 import { formatCurrency } from "@/lib/format";
-import { cellKey, type DatosCellEdit, type DatosRow, type DatosSort } from "./datos-types";
+import {
+  cellKey,
+  type DatosCellEdit,
+  type DatosRow,
+  type DatosSort,
+} from "@/lib/profit-loss/datos-types";
 
 /** A tree row, flattened for rendering, with the display flags a row needs. */
 export interface FlatRow {

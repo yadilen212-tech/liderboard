@@ -4,7 +4,7 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 import { memo } from "react";
 import { cn } from "@/lib/cn";
 import type { EditorAnchor } from "./cell-editor";
-import type { DatosRow } from "./datos-types";
+import type { DatosRow } from "@/lib/profit-loss/datos-types";
 import { formatAmount, rowTotal } from "./datos-utils";
 
 const INDENT_STEP = 16;
