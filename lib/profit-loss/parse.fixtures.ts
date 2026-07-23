@@ -74,6 +74,25 @@ export const SUCURSAL_AOA: FixtureCell[][] = [
   ...MONTHLY_BODY,
 ];
 
+/** A second sucursal (different center) sharing the chart of accounts — for merge/workspace tests. */
+export const SUCURSAL_SUR_AOA: FixtureCell[][] = [
+  ["HOTELERA ANDES S.A."],
+  ["Estado de Resultados"],
+  ["Centro de Costo: SUCURSAL SUR"],
+  ["Desde el 01/01/2026 hasta el 31/12/2026"],
+  [null],
+  [null],
+  [null, null, ...MONTH_HEADERS, "Total"],
+  [null],
+  monthlyRow("4", "Ingresos", months(30, 20), 50),
+  monthlyRow("4.1", "Ventas", months(30, 20), 50),
+  monthlyRow("4.1.1", "Ventas Habitaciones", months(30, 20), 50),
+  monthlyRow("5", "Costos y Gastos", months(10), 10),
+  monthlyRow("5.1", "Gastos Operativos", months(10), 10),
+  monthlyRow("5.1.1", "Sueldos", months(10), 10),
+  [null, "Utilidad o Perdida", ...months(20, 20), 40],
+];
+
 /** Annual export: a single "Total" value column. */
 export const ANNUAL_AOA: FixtureCell[][] = [
   ["HOTELERA ANDES S.A."],
