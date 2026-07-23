@@ -126,7 +126,11 @@ export function DatosView() {
   return (
     <div className="px-7 py-5">
       {warnings.length > 0 && !warningsDismissed && (
-        <NoticeBanner onDismiss={() => setWarningsDismissed(true)}>
+        <NoticeBanner
+          onDismiss={() => setWarningsDismissed(true)}
+          details={warnings}
+          className="mb-3.5"
+        >
           El espacio de trabajo tiene {warnings.length} {warnings.length === 1 ? "aviso" : "avisos"}{" "}
           de cuadre; se muestran los valores tal cual.
         </NoticeBanner>

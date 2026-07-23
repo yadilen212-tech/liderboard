@@ -5,6 +5,7 @@ import {
   CONSOLIDATED_AOA,
   MONTHLY_AOA,
   SUCURSAL_AOA,
+  SUCURSAL_NORTE_EMPTY_AOA,
   SUCURSAL_SUR_AOA,
 } from "./parse.fixtures";
 import { buildWorkspace, slugifyCenter, type StagedParse } from "./workspace";
@@ -60,6 +61,19 @@ describe("buildWorkspace", () => {
     expect(sin?.baseFrequency).toBe("anual");
     // SUCURSAL_AOA totals do not match the consolidated columns → at least one cuadre warning.
     expect(ws.meta.warnings.length).toBeGreaterThan(0);
+  });
+
+  it("flags an empty center against a consolidated with data, and keeps the per-account count", () => {
+    const ws = buildWorkspace([
+      statement(SUCURSAL_NORTE_EMPTY_AOA, "norte-vacio.xls"), // NORTE, all zeros
+      statement(SUCURSAL_SUR_AOA, "sur.xls"),
+      consolidated(), // the NORTE column DOES carry data
+    ]);
+    const norte = ws.meta.warnings.filter((w) => w.includes("SUCURSAL NORTE"));
+    // The new, clearer "está vacío" hint...
+    expect(norte.some((w) => w.includes("vacío"))).toBe(true);
+    // ...AND the per-account descuadre count is still emitted.
+    expect(norte.some((w) => w.includes("no cuadra") && w.includes("cuenta(s)"))).toBe(true);
   });
 
   it("does not add an annual fallback center when monthly centers exist (avoids width mixing)", () => {

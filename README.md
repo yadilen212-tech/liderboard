@@ -113,7 +113,11 @@ El contenido de Gráficos y Análisis aún está en construcción.
   (línea "Centro de Costo:" + empresa), **nunca por el nombre de archivo** — los reportes
   reales tienen nombres poco confiables. Los centros salen de las sucursales mensuales; el
   **Consolidado** se calcula sumándolas; el archivo consolidado aporta **Sin centro de costo**
-  (anual) y valida los cuadres (`Σ centros + Sin-centro = GENERAL`, avisos en un banner).
+  (anual) y valida los cuadres (`Σ centros + Sin-centro = GENERAL`, descuadre por cuentas de
+  cada centro, y un aviso claro cuando un centro entra **vacío** —todo en 0— pero el
+  consolidado sí trae datos, señal típica de haber cargado el archivo mensual equivocado). Los
+  avisos salen en un banner **expandible** (`NoticeBanner`, con "Ver detalle" para leer cada
+  mensaje) tanto en la vista Datos como en el preview del modal de carga.
 - **Mapeo genérico:** el parser lee el esqueleto (preámbulo → cabecera → filas
   `código, nombre, valores` → fila Utilidad), no un plan de cuentas fijo. Las sumas de
   cuentas padre y la fila "Utilidad o Pérdida" (raíces 4 − raíces 5) **siempre se

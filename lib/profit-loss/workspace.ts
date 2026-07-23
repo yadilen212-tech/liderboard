@@ -233,6 +233,16 @@ function validateAgainstConsolidated(datasets: PygDataset[], parsed: ParsedConso
         mismatches++;
       }
     }
+    // An entirely-zero center against a consolidated column that DOES carry data almost always
+    // means the wrong (empty) monthly file was loaded — call that out before the raw count.
+    const mineEmpty = Array.from(mine.values()).every((v) => Math.abs(v) <= SUM_TOLERANCE);
+    const theirsHasData = Array.from(theirs.values()).some((v) => Math.abs(v) > SUM_TOLERANCE);
+    if (mineEmpty && theirsHasData) {
+      warnings.push(
+        `El centro "${column.name}" está vacío (todos sus valores en 0), pero el consolidado sí ` +
+          `trae datos para ese centro. Revisa que cargaste el archivo mensual correcto.`,
+      );
+    }
     if (mismatches > 0) {
       warnings.push(
         `El centro "${column.name}" no cuadra con el consolidado en ${mismatches} cuenta(s).`,

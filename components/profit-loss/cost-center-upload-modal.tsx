@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, FileSpreadsheet, Loader2, Upload, X } from "lucide-react";
+import { FileSpreadsheet, Loader2, Upload, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { cn } from "@/lib/cn";
@@ -8,6 +8,7 @@ import { db } from "@/lib/profit-loss/db";
 import { PygParseError } from "@/lib/profit-loss/errors";
 import { parseWorkbookFile } from "@/lib/profit-loss/parse";
 import { buildWorkspace, type StagedParse } from "@/lib/profit-loss/workspace";
+import { NoticeBanner } from "./notice-banner";
 import { usePygData } from "./pyg-data-provider";
 
 interface StagedFile {
@@ -206,13 +207,9 @@ export function CostCenterUploadModal({ open, onClose }: { open: boolean; onClos
             )}
 
             {preview && preview.meta.warnings.length > 0 && (
-              <div className="mt-3 flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-[11.5px] text-ink-soft">
-                <AlertTriangle size={14} className="mt-0.5 shrink-0 text-warning" />
-                <span>
-                  {preview.meta.warnings.length} aviso(s) de cuadre; se cargarán los valores tal
-                  cual.
-                </span>
-              </div>
+              <NoticeBanner details={preview.meta.warnings} className="mt-3">
+                {preview.meta.warnings.length} aviso(s) de cuadre; se cargarán los valores tal cual.
+              </NoticeBanner>
             )}
           </div>
 
