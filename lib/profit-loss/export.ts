@@ -13,7 +13,7 @@ import ExcelJS from "exceljs";
 import { MONTHS_FULL_ES } from "@/lib/date";
 import { formatCurrency } from "@/lib/format";
 import type { DatosCell, DatosRow } from "./datos-types";
-import { buildAccountTree, mergeCenters, toDatosGrid } from "./derive";
+import { applyEditsToLeafAccounts, buildAccountTree, mergeCenters, toDatosGrid } from "./derive";
 import { commentsToMetaRows, META_SHEET_NAME } from "./excel-metadata";
 import type { AccountNode } from "./derive";
 import type { CellEdit, ImportedComment, PygDataset } from "./types";
@@ -282,7 +282,11 @@ export function buildMultiCenterWorkbook(input: MultiCenterInput): ExcelJS.Workb
 
   const base = input.centers[0]?.dataset;
   if (base) {
-    const merged = mergeCenters(input.centers.map((c) => c.dataset.accounts));
+    // Apply each center's edits before merging so the Consolidado sheet equals the sum of the
+    // (edited) center sheets — never the stale pre-edit values.
+    const merged = mergeCenters(
+      input.centers.map((c) => applyEditsToLeafAccounts(c.dataset.accounts, c.edits)),
+    );
     const consolidated: PygDataset = {
       ...base,
       id: "consolidado",
@@ -297,7 +301,7 @@ export function buildMultiCenterWorkbook(input: MultiCenterInput): ExcelJS.Workb
   for (const { dataset, edits } of input.centers) {
     const name = uniqueSheetName(dataset.costCenterName || "Centro", used);
     writeStatementSheet(wb, name, dataset, edits);
-    attachCenterMetadata(wb, name, edits);
+    attachCenterMetadata(wb, name, edits, used);
   }
 
   if (input.sinCentro) {
@@ -325,12 +329,18 @@ function uniqueSheetName(raw: string, used: Set<string>): string {
 }
 
 /** Comments for a re-uploadable per-center sheet go in a per-sheet hidden metadata sheet. */
-function attachCenterMetadata(wb: ExcelJS.Workbook, centerName: string, edits: CellEdit[]): void {
+function attachCenterMetadata(
+  wb: ExcelJS.Workbook,
+  centerName: string,
+  edits: CellEdit[],
+  used: Set<string>,
+): void {
   const comments = edits.filter((e) => e.comment);
   if (comments.length === 0) {
     return;
   }
-  const metaName = uniqueSheetName(`${META_SHEET_NAME}-${centerName}`, new Set());
+  // Share the workbook's sheet-name set so two centers whose meta names truncate alike stay unique.
+  const metaName = uniqueSheetName(`${META_SHEET_NAME}-${centerName}`, used);
   const meta = wb.addWorksheet(metaName, { state: "veryHidden" });
   meta.addRows(
     commentsToMetaRows(

@@ -3,6 +3,7 @@
 import { AlertTriangle, FileSpreadsheet, Loader2, Upload, X } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 import { cn } from "@/lib/cn";
+import { db } from "@/lib/profit-loss/db";
 import { PygParseError } from "@/lib/profit-loss/errors";
 import { parseWorkbookFile } from "@/lib/profit-loss/parse";
 import { buildWorkspace, type StagedParse } from "@/lib/profit-loss/workspace";
@@ -73,6 +74,16 @@ export function CostCenterUploadModal({ open, onClose }: { open: boolean; onClos
     }
     setBusy(true);
     try {
+      // Committing replaces the whole workspace; warn if that would discard existing edits.
+      const editCount = await db.edits.count();
+      if (
+        editCount > 0 &&
+        !window.confirm(
+          "Cargar reemplazará los datos actuales y descartará las ediciones y comentarios existentes. ¿Continuar?",
+        )
+      ) {
+        return;
+      }
       await commitWorkspace(preview);
       onClose();
       setFiles([]);

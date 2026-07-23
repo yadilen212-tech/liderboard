@@ -162,6 +162,31 @@ describe("buildMultiCenterWorkbook", () => {
     expect(names).toContain("Sin centro de costo");
   });
 
+  it("builds the Consolidado sheet from EDITED center values, not the raw sum", () => {
+    // "4.1.1" Enero is 100 in the raw fixture; edit it to 999 in NORTE.
+    const edit: CellEdit = {
+      datasetId: norte.id,
+      code: "4.1.1",
+      monthIndex: 0,
+      value: 999,
+      updatedAt: 1,
+    };
+    const wb = buildMultiCenterWorkbook({
+      companyName: "X",
+      centers: [
+        { dataset: { ...norte, role: "center" as const, costCenterName: "NORTE" }, edits: [edit] },
+      ],
+    });
+    const ws = wb.getWorksheet("Consolidado");
+    let enero: unknown;
+    ws?.eachRow((row) => {
+      if (String(row.getCell(1).value ?? "") === "4.1.1") {
+        enero = row.getCell(3).value; // FIRST_VALUE_COL (Enero)
+      }
+    });
+    expect(enero).toBe(999);
+  });
+
   it("truncates and de-duplicates over-long / colliding sheet names", async () => {
     const long = "CENTRO CON UN NOMBRE EXTREMADAMENTE LARGO QUE SUPERA EL LIMITE";
     const wb = buildMultiCenterWorkbook({

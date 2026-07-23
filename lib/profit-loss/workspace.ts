@@ -64,6 +64,8 @@ export function buildWorkspace(staged: StagedParse[]): BuiltWorkspace {
       warnings.push("Se cargaron varios estados sin centro de costo; se conserva el primero.");
     }
     const dataset: PygDataset = { ...chosen.result.dataset, role: "single" };
+    // Surface the file's own parse/validation warnings (sum mismatches, missing months…).
+    warnings.push(...dataset.warnings);
     return {
       mode: "single",
       datasets: [dataset],
@@ -120,6 +122,8 @@ export function buildWorkspace(staged: StagedParse[]): BuiltWorkspace {
       );
     }
     pushCenter(s.result.dataset, s.result.comments, name);
+    // Surface each center file's own parse/validation warnings, tagged by center.
+    warnings.push(...s.result.dataset.warnings.map((w) => `${name}: ${w}`));
   }
 
   // Consolidated: sin-centro dataset + annual-only fallback centers + validation.
@@ -133,20 +137,29 @@ export function buildWorkspace(staged: StagedParse[]): BuiltWorkspace {
       );
     }
 
-    // Fallback: centers that only exist in the consolidated (no monthly file) → annual center.
-    for (const column of parsed.columns) {
-      if (column.kind !== "center") {
-        continue;
+    if (centerStatements.length === 0) {
+      // Consolidated-only: expose each center column as an annual, read-only center. (When
+      // monthly centers exist we must NOT mix an annual column into the monthly Consolidado —
+      // it would dump a whole year into January; those columns are only used for validation.)
+      for (const column of parsed.columns) {
+        if (column.kind !== "center" || usedSlugs.has(slugifyCenter(column.name))) {
+          continue;
+        }
+        pushCenter(
+          annualDatasetFromColumn(column.name, column.accounts, companyName),
+          [],
+          column.name,
+        );
       }
-      if (usedSlugs.has(slugifyCenter(column.name))) {
-        continue;
-      }
-      const dataset: PygDataset = annualDatasetFromColumn(
-        column.name,
-        column.accounts,
-        companyName,
+    } else {
+      const uncovered = parsed.columns.filter(
+        (c) => c.kind === "center" && !usedSlugs.has(slugifyCenter(c.name)),
       );
-      pushCenter(dataset, [], column.name);
+      if (uncovered.length > 0) {
+        warnings.push(
+          `El consolidado incluye ${uncovered.length} centro(s) sin archivo mensual; no se agregan al Consolidado (sí se usan para validar).`,
+        );
+      }
     }
 
     const sinColumn = parsed.columns.find((c) => c.kind === "sin-centro");

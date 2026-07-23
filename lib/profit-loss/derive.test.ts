@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   aggregate,
   allowedFrequencies,
+  applyEditsToLeafAccounts,
   applyLeafEdits,
   buildAccountTree,
   computeResult,
@@ -310,5 +311,27 @@ describe("mergeCenters", () => {
     ];
     const { warnings } = mergeCenters([a, b]);
     expect(warnings.some((w) => w.includes("4"))).toBe(true);
+  });
+});
+
+describe("applyEditsToLeafAccounts", () => {
+  it("overrides leaf values, ignores parents and comment-only edits", () => {
+    const accounts = [
+      { code: "4", name: "Ingresos", values: [10, 0] },
+      { code: "4.1", name: "Ventas", values: [10, 0] }, // leaf
+    ];
+    const edited = applyEditsToLeafAccounts(accounts, [
+      { datasetId: "d", code: "4.1", monthIndex: 1, value: 55, updatedAt: 0 },
+      { datasetId: "d", code: "4", monthIndex: 0, value: 999, updatedAt: 0 }, // parent — ignored
+      { datasetId: "d", code: "4.1", monthIndex: 0, comment: "x", updatedAt: 0 }, // no value — ignored
+    ]);
+    const byCode = new Map(edited.map((a) => [a.code, a.values]));
+    expect(byCode.get("4.1")).toEqual([10, 55]);
+    expect(byCode.get("4")).toEqual([10, 0]);
+  });
+
+  it("returns the same reference when there are no value edits", () => {
+    const accounts = [{ code: "4", name: "Ingresos", values: [1] }];
+    expect(applyEditsToLeafAccounts(accounts, [])).toBe(accounts);
   });
 });

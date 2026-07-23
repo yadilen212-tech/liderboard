@@ -62,6 +62,17 @@ describe("buildWorkspace", () => {
     expect(ws.meta.warnings.length).toBeGreaterThan(0);
   });
 
+  it("does not add an annual fallback center when monthly centers exist (avoids width mixing)", () => {
+    // Stage only NORTE (monthly) + the consolidated (which also has SUR + sin-centro).
+    const ws = buildWorkspace([statement(SUCURSAL_AOA, "norte.xls"), consolidated()]);
+    const centers = ws.datasets.filter((d) => d.role === "center");
+    // Only the monthly NORTE center — SUR (uncovered) must NOT become an annual center.
+    expect(centers.map((c) => c.centerId)).toEqual(["sucursal-norte"]);
+    expect(centers.every((c) => c.baseFrequency === "mensual")).toBe(true);
+    expect(ws.datasets.some((d) => d.role === "sin-centro")).toBe(true);
+    expect(ws.meta.warnings.some((w) => w.includes("sin archivo mensual"))).toBe(true);
+  });
+
   it("degrades a consolidated-only upload to annual read-only centers", () => {
     const ws = buildWorkspace([consolidated()]);
     expect(ws.mode).toBe("multi");

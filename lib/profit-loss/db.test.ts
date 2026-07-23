@@ -114,6 +114,19 @@ describe("replaceWorkspace", () => {
     expect(seeded[0].comment).toBe("hola");
   });
 
+  it("returns order-less (single) datasets via toArray — orderBy('order') would drop them", async () => {
+    // s1 is role:"single" with no `order`; c1 is a center with order 0.
+    await replaceWorkspace([dataset("s1"), center("c1", "norte")], {
+      companyName: "X",
+      warnings: [],
+      activeCenterId: "s1",
+    });
+    // The provider must query toArray(): both rows come back.
+    expect((await db.datasets.toArray()).map((d) => d.id).sort()).toEqual(["c1", "s1"]);
+    // Regression guard: an index scan on "order" silently excludes the order-less single row.
+    expect((await db.datasets.orderBy("order").toArray()).map((d) => d.id)).toEqual(["c1"]);
+  });
+
   it("wipes datasets, edits and meta of the prior workspace", async () => {
     await replaceWorkspace(
       [center("a", "norte")],

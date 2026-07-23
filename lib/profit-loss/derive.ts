@@ -374,3 +374,43 @@ export function mergeCenters(centers: AccountRow[][]): {
 
   return { accounts: order.map((code) => merged.get(code) as AccountRow), warnings };
 }
+
+/**
+ * Overlays leaf value-edits onto a flat AccountRow list (the shape mergeCenters consumes),
+ * so the computed Consolidado reflects per-center edits. Only leaf codes take a value; parents
+ * recompute downstream. Non-value edits (comment-only) are ignored here.
+ */
+export function applyEditsToLeafAccounts(accounts: AccountRow[], edits: CellEdit[]): AccountRow[] {
+  const valueEdits = edits.filter((edit) => edit.value !== undefined);
+  if (valueEdits.length === 0) {
+    return accounts;
+  }
+  const codes = new Set(accounts.map((a) => a.code));
+  const isLeaf = (code: string): boolean => {
+    for (const other of codes) {
+      if (other !== code && other.startsWith(`${code}.`)) {
+        return false;
+      }
+    }
+    return true;
+  };
+  const byCode = new Map<string, CellEdit[]>();
+  for (const edit of valueEdits) {
+    const list = byCode.get(edit.code) ?? [];
+    list.push(edit);
+    byCode.set(edit.code, list);
+  }
+  return accounts.map((account) => {
+    const own = byCode.get(account.code);
+    if (!own || !isLeaf(account.code)) {
+      return account;
+    }
+    const values = [...account.values];
+    for (const edit of own) {
+      if (edit.monthIndex >= 0 && edit.monthIndex < values.length) {
+        values[edit.monthIndex] = edit.value ?? 0;
+      }
+    }
+    return { ...account, values };
+  });
+}

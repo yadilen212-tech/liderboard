@@ -17,7 +17,12 @@ import {
   saveActiveCenter,
   saveCellEdit,
 } from "@/lib/profit-loss/db";
-import { allowedFrequencies, FREQUENCY_ORDER, mergeCenters } from "@/lib/profit-loss/derive";
+import {
+  allowedFrequencies,
+  applyEditsToLeafAccounts,
+  FREQUENCY_ORDER,
+  mergeCenters,
+} from "@/lib/profit-loss/derive";
 import {
   accountOptions,
   collapsedForLevel,
@@ -89,10 +94,15 @@ const PygDataContext = createContext<PygDataValue | null>(null);
  * consume it from different branches.
  */
 export function PygDataProvider({ children }: { children: ReactNode }) {
-  const datasets = useLiveQuery(() => db.datasets.orderBy("order").toArray(), []) ?? EMPTY_DATASETS;
+  // toArray() (NOT orderBy("order")): IndexedDB indexes exclude rows whose key is undefined,
+  // so `order`-less single/migrated datasets would vanish from an orderBy. buildViews sorts
+  // centers by `order` itself.
+  const datasets = useLiveQuery(() => db.datasets.toArray(), []) ?? EMPTY_DATASETS;
+  const allEdits = useLiveQuery(() => db.edits.toArray(), []) ?? EMPTY_EDITS;
   const metaRow = useLiveQuery(() => getWorkspaceMeta(), []);
 
-  const views = useMemo<CenterView[]>(() => buildViews(datasets), [datasets]);
+  // buildViews needs every center's edits so the computed Consolidado reflects them.
+  const views = useMemo<CenterView[]>(() => buildViews(datasets, allEdits), [datasets, allEdits]);
   const mode: "single" | "multi" =
     views.length <= 1 && views[0]?.role === "single" ? "single" : "multi";
 
@@ -111,14 +121,14 @@ export function PygDataProvider({ children }: { children: ReactNode }) {
   const activeView = views.find((v) => v.id === resolvedActiveId) ?? views[0];
   const dataset = activeView?.dataset;
 
-  const edits =
-    useLiveQuery(
-      () =>
-        dataset && activeView?.editable
-          ? db.edits.where("datasetId").equals(dataset.id).toArray()
-          : Promise.resolve(EMPTY_EDITS),
-      [dataset?.id, activeView?.editable],
-    ) ?? EMPTY_EDITS;
+  // Edits of the active view's dataset — for display (comments) and, on editable centers, values.
+  // The synthetic Consolidado (id "consolidado") has no stored edits: they are already merged
+  // into its accounts by buildViews.
+  const datasetId = dataset?.id;
+  const edits = useMemo(
+    () => (datasetId ? allEdits.filter((e) => e.datasetId === datasetId) : EMPTY_EDITS),
+    [allEdits, datasetId],
+  );
 
   const base = dataset?.baseFrequency;
   const accounts = dataset?.accounts;
@@ -283,7 +293,7 @@ export function usePygData(): PygDataValue {
  * computed sum of the monthly centers) + each center + Sin-centro. The Consolidado dataset is
  * synthetic (never persisted): its accounts are the column-wise sum of the centers.
  */
-function buildViews(datasets: PygDataset[]): CenterView[] {
+function buildViews(datasets: PygDataset[], allEdits: CellEdit[]): CenterView[] {
   if (datasets.length === 0) {
     return [];
   }
@@ -307,7 +317,14 @@ function buildViews(datasets: PygDataset[]): CenterView[] {
   const views: CenterView[] = [];
 
   if (centers.length > 0) {
-    const merged = mergeCenters(centers.map((c) => c.accounts));
+    const merged = mergeCenters(
+      centers.map((c) =>
+        applyEditsToLeafAccounts(
+          c.accounts,
+          allEdits.filter((e) => e.datasetId === c.id),
+        ),
+      ),
+    );
     const base = centers[0];
     const consolidated: PygDataset = {
       ...base,
