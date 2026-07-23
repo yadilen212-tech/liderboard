@@ -13,7 +13,7 @@ import ExcelJS from "exceljs";
 import { MONTHS_FULL_ES } from "@/lib/date";
 import { formatCurrency } from "@/lib/format";
 import type { DatosCell, DatosRow } from "./datos-types";
-import { buildAccountTree, toDatosGrid } from "./derive";
+import { buildAccountTree, mergeCenters, toDatosGrid } from "./derive";
 import { commentsToMetaRows, META_SHEET_NAME } from "./excel-metadata";
 import type { AccountNode } from "./derive";
 import type { CellEdit, ImportedComment, PygDataset } from "./types";
@@ -28,7 +28,19 @@ const SHEET_NAME = "Estado de Resultados";
 /** The Estado de Resultados with edited values and comments, ready to download. */
 export function buildPygWorkbook(dataset: PygDataset, edits: CellEdit[]): ExcelJS.Workbook {
   const wb = newWorkbook();
-  const ws = wb.addWorksheet(SHEET_NAME);
+  writeStatementSheet(wb, SHEET_NAME, dataset, edits);
+  attachMetadata(wb, edits);
+  return wb;
+}
+
+/** Writes one Estado de Resultados worksheet (preamble → header → rows → result) into `wb`. */
+function writeStatementSheet(
+  wb: ExcelJS.Workbook,
+  name: string,
+  dataset: PygDataset,
+  edits: CellEdit[],
+): ExcelJS.Worksheet {
+  const ws = wb.addWorksheet(name);
   const isMonthly = dataset.baseFrequency !== "anual";
 
   writePreamble(ws, dataset);
@@ -40,9 +52,7 @@ export function buildPygWorkbook(dataset: PygDataset, edits: CellEdit[]): ExcelJ
   const originals = new Map(dataset.accounts.map((account) => [account.code, account.values]));
   const valueEdits = indexValueEdits(edits);
   emitDataRows(ws, grid.rows, { isMonthly, originals, valueEdits });
-
-  attachMetadata(wb, edits);
-  return wb;
+  return ws;
 }
 
 /** A blank template seeded with the dataset's accounts (values empty) to fill and re-upload. */
@@ -253,4 +263,82 @@ function sanitize(name: string): string {
     .replace(/[\\/:*?"<>|]/g, "")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+export interface MultiCenterInput {
+  companyName: string;
+  centers: { dataset: PygDataset; edits: CellEdit[] }[];
+  sinCentro?: PygDataset;
+}
+
+/**
+ * A multi-sheet workbook: a computed "Consolidado" sheet (sum of the monthly centers), one
+ * sheet per center (with its edits/comments), and a "Sin centro de costo" sheet (annual) when
+ * present. Sheet names are Excel-safe (≤31 chars, unique).
+ */
+export function buildMultiCenterWorkbook(input: MultiCenterInput): ExcelJS.Workbook {
+  const wb = newWorkbook();
+  const used = new Set<string>();
+
+  const base = input.centers[0]?.dataset;
+  if (base) {
+    const merged = mergeCenters(input.centers.map((c) => c.dataset.accounts));
+    const consolidated: PygDataset = {
+      ...base,
+      id: "consolidado",
+      role: "center",
+      costCenterName: undefined,
+      accounts: merged.accounts,
+      resultFromFile: [],
+    };
+    writeStatementSheet(wb, uniqueSheetName("Consolidado", used), consolidated, []);
+  }
+
+  for (const { dataset, edits } of input.centers) {
+    const name = uniqueSheetName(dataset.costCenterName || "Centro", used);
+    writeStatementSheet(wb, name, dataset, edits);
+    attachCenterMetadata(wb, name, edits);
+  }
+
+  if (input.sinCentro) {
+    writeStatementSheet(wb, uniqueSheetName("Sin centro de costo", used), input.sinCentro, []);
+  }
+  return wb;
+}
+
+/** Excel forbids > 31 chars, the chars \ / ? * [ ] :, and duplicate sheet names. */
+function uniqueSheetName(raw: string, used: Set<string>): string {
+  const cleaned =
+    raw
+      .replace(/[\\/?*[\]:]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim() || "Hoja";
+  let name = cleaned.slice(0, 31);
+  let n = 2;
+  while (used.has(name.toLowerCase())) {
+    const suffix = ` (${n})`;
+    name = `${cleaned.slice(0, 31 - suffix.length)}${suffix}`;
+    n++;
+  }
+  used.add(name.toLowerCase());
+  return name;
+}
+
+/** Comments for a re-uploadable per-center sheet go in a per-sheet hidden metadata sheet. */
+function attachCenterMetadata(wb: ExcelJS.Workbook, centerName: string, edits: CellEdit[]): void {
+  const comments = edits.filter((e) => e.comment);
+  if (comments.length === 0) {
+    return;
+  }
+  const metaName = uniqueSheetName(`${META_SHEET_NAME}-${centerName}`, new Set());
+  const meta = wb.addWorksheet(metaName, { state: "veryHidden" });
+  meta.addRows(
+    commentsToMetaRows(
+      comments.map((e) => ({
+        code: e.code,
+        monthIndex: e.monthIndex,
+        comment: e.comment as string,
+      })),
+    ),
+  );
 }

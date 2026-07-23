@@ -1,11 +1,18 @@
 import ExcelJS from "exceljs";
 import { describe, expect, it } from "vitest";
-import { buildBlankTemplate, buildPygWorkbook, pygExportFilename } from "./export";
+import {
+  buildBlankTemplate,
+  buildMultiCenterWorkbook,
+  buildPygWorkbook,
+  pygExportFilename,
+} from "./export";
 import { parsePygWorkbook } from "./parse";
-import { aoaToXlsxBuffer, MONTHLY_AOA } from "./parse.fixtures";
+import { aoaToXlsxBuffer, MONTHLY_AOA, SUCURSAL_AOA, SUCURSAL_SUR_AOA } from "./parse.fixtures";
 import type { CellEdit } from "./types";
 
 const { dataset } = parsePygWorkbook(aoaToXlsxBuffer(MONTHLY_AOA), "reporte.xlsx");
+const norte = parsePygWorkbook(aoaToXlsxBuffer(SUCURSAL_AOA), "norte.xls").dataset;
+const sur = parsePygWorkbook(aoaToXlsxBuffer(SUCURSAL_SUR_AOA), "sur.xls").dataset;
 
 /** Leaf edit (with comment), parent comment-only, and a leaf edit without a comment. */
 const edits: CellEdit[] = [
@@ -124,5 +131,49 @@ describe("pygExportFilename", () => {
   it("derives a template filename and tolerates a missing dataset", () => {
     expect(pygExportFilename(undefined, "template").endsWith(".xlsx")).toBe(true);
     expect(pygExportFilename(dataset, "template")).toContain("Plantilla");
+  });
+});
+
+describe("buildMultiCenterWorkbook", () => {
+  it("emits a Consolidado sheet, one sheet per center, and a Sin-centro sheet", async () => {
+    const sinCentro = {
+      ...sur,
+      id: "sin",
+      role: "sin-centro" as const,
+      baseFrequency: "anual" as const,
+      accounts: [{ code: "4", name: "Ingresos", values: [7] }],
+      resultFromFile: [7],
+    };
+    const wb = buildMultiCenterWorkbook({
+      companyName: "HOTELERA ANDES S.A.",
+      centers: [
+        {
+          dataset: { ...norte, role: "center" as const, costCenterName: "SUCURSAL NORTE" },
+          edits: [],
+        },
+        { dataset: { ...sur, role: "center" as const, costCenterName: "SUCURSAL SUR" }, edits: [] },
+      ],
+      sinCentro,
+    });
+    const names = wb.worksheets.map((w) => w.name);
+    expect(names).toContain("Consolidado");
+    expect(names).toContain("SUCURSAL NORTE");
+    expect(names).toContain("SUCURSAL SUR");
+    expect(names).toContain("Sin centro de costo");
+  });
+
+  it("truncates and de-duplicates over-long / colliding sheet names", async () => {
+    const long = "CENTRO CON UN NOMBRE EXTREMADAMENTE LARGO QUE SUPERA EL LIMITE";
+    const wb = buildMultiCenterWorkbook({
+      companyName: "X",
+      centers: [
+        { dataset: { ...norte, costCenterName: long }, edits: [] },
+        { dataset: { ...sur, costCenterName: long }, edits: [] },
+      ],
+    });
+    for (const w of wb.worksheets) {
+      expect(w.name.length).toBeLessThanOrEqual(31);
+    }
+    expect(new Set(wb.worksheets.map((w) => w.name)).size).toBe(wb.worksheets.length);
   });
 });
