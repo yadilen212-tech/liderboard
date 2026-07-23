@@ -10,8 +10,15 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { db, replaceDataset, saveCellEdit } from "@/lib/profit-loss/db";
-import { allowedFrequencies, FREQUENCY_ORDER } from "@/lib/profit-loss/derive";
+import {
+  db,
+  getWorkspaceMeta,
+  replaceDataset,
+  replaceWorkspace,
+  saveActiveCenter,
+  saveCellEdit,
+} from "@/lib/profit-loss/db";
+import { allowedFrequencies, FREQUENCY_ORDER, mergeCenters } from "@/lib/profit-loss/derive";
 import { PygParseError } from "@/lib/profit-loss/errors";
 import {
   accountOptions,
@@ -20,8 +27,22 @@ import {
   type AccountOption,
 } from "@/lib/profit-loss/filter";
 import type { CellEdit, Frequency, PygDataset } from "@/lib/profit-loss/types";
+import type { BuiltWorkspace } from "@/lib/profit-loss/workspace";
 
 const EMPTY_EDITS: CellEdit[] = [];
+const EMPTY_DATASETS: PygDataset[] = [];
+const CONSOLIDADO_ID = "consolidado";
+const CONSOLIDADO_COLOR = "#334155";
+
+/** One entry in the "Centro de costos" selector: Consolidado, a center, or Sin-centro. */
+export interface CenterView {
+  id: string;
+  name: string;
+  color?: string;
+  role: "consolidado" | "center" | "sin-centro" | "single";
+  dataset: PygDataset;
+  editable: boolean;
+}
 
 interface PygDataValue {
   dataset: PygDataset | undefined;
@@ -29,6 +50,15 @@ interface PygDataValue {
   frequency: Frequency;
   allowed: Frequency[];
   setFrequency: (frequency: Frequency) => void;
+  /** "single" = a lone statement (no cost-center tabs); "multi" = a workspace of centers. */
+  mode: "single" | "multi";
+  /** Selector entries (Consolidado + centers + Sin-centro); empty in single mode. */
+  views: CenterView[];
+  activeCenterId: string;
+  setActiveCenter: (id: string) => void;
+  commitWorkspace: (built: BuiltWorkspace) => Promise<void>;
+  /** Workspace-level cuadre warnings (from meta). */
+  warnings: string[];
   uploadFile: (file: File) => Promise<void>;
   isUploading: boolean;
   uploadError: string | null;
@@ -41,7 +71,7 @@ interface PygDataValue {
   ) => Promise<void>;
   /** Depth of the deepest movement account; 0 with no dataset. Bounds Nivel/Expandir. */
   deepestLevel: number;
-  /** Accounts of the loaded file as "Cuenta contable" options; [] with no dataset. */
+  /** Accounts of the active view as "Cuenta contable" options; [] with no dataset. */
   accountOptions: AccountOption[];
   /** "Cuenta contable" focus selection (empty = no filter). */
   selectedAccounts: Set<string>;
@@ -59,20 +89,18 @@ interface PygDataValue {
 const PygDataContext = createContext<PygDataValue | null>(null);
 
 /**
- * Shared PyG data state: the active Dexie dataset + edits (live queries), the selected
- * view frequency, and the upload pipeline. Mounted in the dashboard layout because the
- * header (ActiveClient) and the module content consume it from different branches.
+ * Shared PyG data state: the active Dexie workspace (one or more datasets) + edits (live
+ * queries), the selected view frequency, the active cost-center view, and the upload pipeline.
+ * Mounted in the dashboard layout because the header (ActiveClient) and the module content
+ * consume it from different branches.
  */
 export function PygDataProvider({ children }: { children: ReactNode }) {
-  const dataset = useLiveQuery(() => db.datasets.toCollection().first(), []);
-  const edits =
-    useLiveQuery(
-      () =>
-        dataset
-          ? db.edits.where("datasetId").equals(dataset.id).toArray()
-          : Promise.resolve(EMPTY_EDITS),
-      [dataset?.id],
-    ) ?? EMPTY_EDITS;
+  const datasets = useLiveQuery(() => db.datasets.orderBy("order").toArray(), []) ?? EMPTY_DATASETS;
+  const metaRow = useLiveQuery(() => getWorkspaceMeta(), []);
+
+  const views = useMemo<CenterView[]>(() => buildViews(datasets), [datasets]);
+  const mode: "single" | "multi" =
+    views.length <= 1 && views[0]?.role === "single" ? "single" : "multi";
 
   const [frequency, setFrequencyState] = useState<Frequency>("mensual");
   const [isUploading, setIsUploading] = useState(false);
@@ -80,25 +108,48 @@ export function PygDataProvider({ children }: { children: ReactNode }) {
   const [selectedAccounts, setSelectedAccounts] = useState<Set<string>>(() => new Set());
   const [maxLevel, setMaxLevelState] = useState<number | null>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
+  const [activeCenterId, setActiveCenterId] = useState<string>(CONSOLIDADO_ID);
+
+  // Resolve the active view: the current id, else the persisted one, else the first view.
+  const resolvedActiveId =
+    views.find((v) => v.id === activeCenterId)?.id ??
+    (metaRow?.activeCenterId && views.some((v) => v.id === metaRow.activeCenterId)
+      ? metaRow.activeCenterId
+      : (views[0]?.id ?? CONSOLIDADO_ID));
+  const activeView = views.find((v) => v.id === resolvedActiveId) ?? views[0];
+  const dataset = activeView?.dataset;
+
+  const edits =
+    useLiveQuery(
+      () =>
+        dataset && activeView?.editable
+          ? db.edits.where("datasetId").equals(dataset.id).toArray()
+          : Promise.resolve(EMPTY_EDITS),
+      [dataset?.id, activeView?.editable],
+    ) ?? EMPTY_EDITS;
 
   const base = dataset?.baseFrequency;
-  const datasetId = dataset?.id;
   const accounts = dataset?.accounts;
-  // A new file resets the view to the file's own frequency.
+  const allowed = useMemo(() => (base ? allowedFrequencies(base) : [...FREQUENCY_ORDER]), [base]);
+
+  // A NEW workspace (its set of dataset ids changed) resets to the base frequency and clears
+  // the account/level filters and tree collapse state.
+  const workspaceKey = datasets.map((d) => d.id).join("|");
   useEffect(() => {
     if (base) {
       setFrequencyState(base);
     }
-  }, [datasetId, base]);
-
-  // A new file also clears the account/level filters and the tree collapse state.
+  }, [workspaceKey, base]);
   useEffect(() => {
     setSelectedAccounts(new Set());
     setMaxLevelState(null);
     setCollapsed(new Set());
-  }, [datasetId]);
+  }, [workspaceKey]);
 
-  const allowed = useMemo(() => (base ? allowedFrequencies(base) : [...FREQUENCY_ORDER]), [base]);
+  // Switching to a coarser view (e.g. Sin-centro = anual) clamps the frequency into range.
+  useEffect(() => {
+    setFrequencyState((prev) => (allowed.includes(prev) ? prev : (base ?? prev)));
+  }, [resolvedActiveId, allowed, base]);
 
   const deepest = useMemo(() => (accounts ? deepestLevel(accounts) : 0), [accounts]);
   const options = useMemo(() => (accounts ? accountOptions(accounts) : []), [accounts]);
@@ -147,6 +198,16 @@ export function PygDataProvider({ children }: { children: ReactNode }) {
     [accounts],
   );
 
+  const setActiveCenter = useCallback((id: string) => {
+    setActiveCenterId(id);
+    void saveActiveCenter(id);
+  }, []);
+
+  const commitWorkspace = useCallback(async (built: BuiltWorkspace) => {
+    await replaceWorkspace(built.datasets, built.meta, built.commentsByDataset);
+    setActiveCenterId(built.meta.activeCenterId);
+  }, []);
+
   const uploadFile = useCallback(async (file: File) => {
     setUploadError(null);
     setIsUploading(true);
@@ -180,18 +241,18 @@ export function PygDataProvider({ children }: { children: ReactNode }) {
 
   const saveEdit = useCallback(
     async (code: string, monthIndex: number, value: number | null | undefined, comment: string) => {
-      if (!datasetId) {
+      if (!dataset?.id || !activeView?.editable) {
         return;
       }
       await saveCellEdit({
-        datasetId,
+        datasetId: dataset.id,
         code,
         monthIndex,
         ...(value !== undefined ? { value } : {}),
         ...(comment ? { comment } : {}),
       });
     },
-    [datasetId],
+    [dataset?.id, activeView?.editable],
   );
 
   const value = useMemo<PygDataValue>(
@@ -201,6 +262,12 @@ export function PygDataProvider({ children }: { children: ReactNode }) {
       frequency,
       allowed,
       setFrequency,
+      mode,
+      views,
+      activeCenterId: resolvedActiveId,
+      setActiveCenter,
+      commitWorkspace,
+      warnings: metaRow?.warnings ?? [],
       uploadFile,
       isUploading,
       uploadError,
@@ -223,6 +290,12 @@ export function PygDataProvider({ children }: { children: ReactNode }) {
       frequency,
       allowed,
       setFrequency,
+      mode,
+      views,
+      resolvedActiveId,
+      setActiveCenter,
+      commitWorkspace,
+      metaRow?.warnings,
       uploadFile,
       isUploading,
       uploadError,
@@ -250,4 +323,79 @@ export function usePygData(): PygDataValue {
     throw new Error("usePygData debe usarse dentro de <PygDataProvider>.");
   }
   return context;
+}
+
+/**
+ * Builds the selector views: single mode → the lone dataset; multi mode → Consolidado (a
+ * computed sum of the monthly centers) + each center + Sin-centro. The Consolidado dataset is
+ * synthetic (never persisted): its accounts are the column-wise sum of the centers.
+ */
+function buildViews(datasets: PygDataset[]): CenterView[] {
+  if (datasets.length === 0) {
+    return [];
+  }
+  const single = datasets.find((d) => d.role === "single");
+  if (single && datasets.length === 1) {
+    return [
+      {
+        id: single.id,
+        name: single.companyName,
+        role: "single",
+        dataset: single,
+        editable: single.baseFrequency !== "anual",
+      },
+    ];
+  }
+
+  const centers = datasets
+    .filter((d) => d.role === "center")
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  const sin = datasets.find((d) => d.role === "sin-centro");
+  const views: CenterView[] = [];
+
+  if (centers.length > 0) {
+    const merged = mergeCenters(centers.map((c) => c.accounts));
+    const base = centers[0];
+    const consolidated: PygDataset = {
+      ...base,
+      id: CONSOLIDADO_ID,
+      role: "center",
+      centerId: CONSOLIDADO_ID,
+      costCenterName: undefined,
+      accounts: merged.accounts,
+      resultFromFile: [],
+      warnings: [],
+    };
+    views.push({
+      id: CONSOLIDADO_ID,
+      name: "Consolidado",
+      color: CONSOLIDADO_COLOR,
+      role: "consolidado",
+      dataset: consolidated,
+      editable: false,
+    });
+  }
+
+  for (const center of centers) {
+    views.push({
+      id: center.centerId as string,
+      name: center.costCenterName || (center.centerId as string),
+      color: center.centerColor,
+      role: "center",
+      dataset: center,
+      editable: center.baseFrequency !== "anual",
+    });
+  }
+
+  if (sin) {
+    views.push({
+      id: "sin-centro",
+      name: "Sin centro de costo",
+      color: sin.centerColor,
+      role: "sin-centro",
+      dataset: sin,
+      editable: false,
+    });
+  }
+  return views;
 }
