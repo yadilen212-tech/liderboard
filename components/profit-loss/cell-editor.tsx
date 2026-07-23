@@ -2,6 +2,7 @@
 
 import { MessageSquare } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { formatNumber, parseCurrency } from "@/lib/format";
 import { formatAmount } from "./datos-utils";
 
 /** Where the editor should anchor — the clicked cell's viewport rect. */
@@ -40,7 +41,9 @@ export function CellEditor({
   onSave: (value: number | null, comment: string) => void;
   onClose: () => void;
 }) {
-  const [value, setValue] = useState(initialValue === null ? "" : String(initialValue));
+  // Seed with the Ecuadorian format the parser expects (`.` thousands, `,` decimals) so
+  // a value with cents round-trips on save instead of being inflated by dropped dots.
+  const [value, setValue] = useState(initialValue === null ? "" : formatNumber(initialValue));
   const [comment, setComment] = useState(initialComment);
   const inputRef = useRef<HTMLInputElement>(null);
   const commentRef = useRef<HTMLTextAreaElement>(null);
@@ -84,8 +87,12 @@ export function CellEditor({
       return;
     }
     const trimmed = value.trim();
-    const parsed = trimmed === "" ? null : Number(trimmed.replace(/\./g, "").replace(",", "."));
-    onSave(Number.isNaN(parsed as number) ? initialValue : parsed, comment.trim());
+    if (trimmed === "") {
+      onSave(null, comment.trim()); // cleared cell
+      return;
+    }
+    const parsed = parseCurrency(trimmed);
+    onSave(parsed ?? initialValue, comment.trim()); // unparseable → keep the original value
   };
 
   const displayValue = formatAmount(initialValue);

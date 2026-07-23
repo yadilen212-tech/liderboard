@@ -29,6 +29,22 @@ export function formatCurrency(value: number, options?: { cents?: boolean }): st
   return value < 0 ? `-${formatted}` : formatted;
 }
 
+/**
+ * Inverse of the Ecuadorian formatters for editable numeric inputs: parses an amount
+ * written with `.` as the thousands separator and `,` as the decimal ("17.338,85" →
+ * 17338.85). Returns `null` for blank or unparseable input so callers can tell a
+ * cleared field from an unchanged one. Pair the editor's seed with `formatNumber` so
+ * the value round-trips without inflation.
+ */
+export function parseCurrency(input: string): number | null {
+  const normalized = input.trim().replace(/\./g, "").replace(",", ".");
+  if (normalized === "") {
+    return null;
+  }
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 const EC_NUMBER = new Intl.NumberFormat("es-EC");
 
 /** Plain Ecuadorian-grouped number, no currency symbol ("1.234,5"). */
