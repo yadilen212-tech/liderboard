@@ -2,14 +2,25 @@
 
 import { ChevronRight } from "lucide-react";
 import { usePathname } from "next/navigation";
-import { ActiveClient } from "@/components/dashboard/active-client";
+import { ActiveClient, type ActiveClientInfo } from "@/components/dashboard/active-client";
+import { usePygData } from "@/components/profit-loss/pyg-data-provider";
 import { DEFAULT_MODULE, findModuleBySlug } from "@/lib/modules";
 
 export function DashboardHeader() {
   const pathname = usePathname();
+  const { dataset } = usePygData();
   const slug = pathname.split("/").filter(Boolean)[0];
   const current = findModuleBySlug(slug) ?? DEFAULT_MODULE;
   const isPyg = current.slug === "profit-loss";
+
+  const client: ActiveClientInfo | undefined = dataset
+    ? {
+        name: dataset.companyName,
+        period: dataset.costCenterName
+          ? `${dataset.periodLabel} · ${dataset.costCenterName}`
+          : dataset.periodLabel,
+      }
+    : undefined;
 
   return (
     <header className="flex items-center gap-5 border-b border-border bg-surface px-7 py-4">
@@ -22,7 +33,7 @@ export function DashboardHeader() {
         <h1 className="truncate text-xl font-bold tracking-tight text-brand">{current.title}</h1>
       </div>
 
-      {isPyg && <ActiveClient />}
+      {isPyg && <ActiveClient client={client} />}
     </header>
   );
 }
