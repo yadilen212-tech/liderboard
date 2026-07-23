@@ -72,11 +72,12 @@ frecuencia, que sí controla los datos mostrados):
 - **Recuadro "Comparar por"** en Gráficos y Análisis (colapsable, cerrado por defecto).
 - Leyenda de **semáforo** en la fila de tabs.
 - **Barra de acciones de Datos** (`DatosToolbar`, solo en la tab Datos, bajo la fila de
-  filtros): las acciones de Excel a la derecha — **Cargar Excel** (abre el modal de carga
-  multi-centro), menú **Descargar Excel** (Excel con tus datos · Plantilla vacía, ambos
-  conectados al pipeline de exportación) e ícono de **información** con los formatos
-  aceptados. (La profundidad del árbol se controla desde el filtro **nivel** de la fila de
-  filtros; el drill-down por fila con los chevrons de la grilla sigue disponible.)
+  filtros): barra **fija** de una fila con el selector de **Centro de costos** a la izquierda
+  (solo en modo multi-centro; ver abajo) y las acciones de Excel a la derecha — **Cargar
+  Excel** (abre el modal de carga multi-centro), menú **Descargar Excel** (Excel con tus datos
+  · Plantilla vacía, ambos conectados al pipeline de exportación) e ícono de **información**
+  con los formatos aceptados. (La profundidad del árbol se controla desde el filtro **nivel**
+  de la fila de filtros; el drill-down por fila con los chevrons de la grilla sigue disponible.)
 
 **Tabla de Datos de PyG** (`DatosView` en la tab Datos) — el estado de resultados editable:
 
@@ -88,10 +89,12 @@ frecuencia, que sí controla los datos mostrados):
 - **Edición de celdas**: solo las **cuentas de movimiento** (hoja del árbol) editan su valor;
   las **cuentas padre** se calculan desde sus movimientos y solo admiten comentario. Ediciones
   y comentarios persisten en IndexedDB (Dexie) y solo están disponibles en la vista Mensual.
-- **Pestañas de centro de costos** sobre la grilla (`CostCenterTabs`, solo en modo
-  multi-centro): alternan entre el **Consolidado** (suma de los centros mensuales, solo
+- **Selector de centro de costos** (`CostCenterTabs`, en la barra de acciones fija, solo en
+  modo multi-centro): alterna entre el **Consolidado** (suma de los centros mensuales, solo
   lectura), cada **centro** (editable en vista Mensual) y **Sin centro de costo** (anual, solo
-  lectura, tomado del archivo consolidado). El subtítulo del header nombra el centro activo.
+  lectura, tomado del archivo consolidado); un ícono de **información** explica esa semántica.
+  Al vivir en la barra fija, no se va con el scroll de la tabla. El subtítulo del header nombra
+  el centro activo.
 - Rendimiento: filas memoizadas (`React.memo`), derivaciones con `useMemo` y
   `content-visibility` en las filas; sin virtualización (aún no hace falta).
 

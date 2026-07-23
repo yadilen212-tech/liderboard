@@ -1,22 +1,30 @@
 "use client";
 
-import { ChevronDown, FilePlus2, FileSpreadsheet, Info, Loader2, Upload } from "lucide-react";
+import { ChevronDown, FilePlus2, FileSpreadsheet, Loader2, Upload } from "lucide-react";
 import { type ReactNode, useCallback, useState } from "react";
+import { InfoTip } from "@/components/ui/info-tip";
 import { cn } from "@/lib/cn";
 import { db } from "@/lib/profit-loss/db";
+import { CostCenterTabs } from "./cost-center-tabs";
 import { CostCenterUploadModal } from "./cost-center-upload-modal";
 import { usePygData } from "./pyg-data-provider";
 
 /**
  * Datos-tab action bar, rendered under the FILTROS row for Pérdidas y Ganancias › Datos.
- * The Excel actions — upload, a download menu, and an accepted-files info tip. Tree depth is
- * controlled by the shared "Nivel" filter in the FILTROS row (see PygToolbar).
+ * Left: the "Centro de costos" selector (multi-center only). Right: the Excel actions —
+ * upload, a download menu, and an accepted-files info tip. Tree depth is controlled by the
+ * shared "Nivel" filter in the FILTROS row (see PygToolbar).
  */
 export function DatosToolbar() {
+  const { mode, views, activeCenterId, setActiveCenter } = usePygData();
   const [uploadOpen, setUploadOpen] = useState(false);
 
   return (
     <div className="flex shrink-0 flex-wrap items-center gap-2.5 border-b border-border bg-surface-sunken px-7 py-2.5">
+      {mode === "multi" && (
+        <CostCenterTabs views={views} activeId={activeCenterId} onSelect={setActiveCenter} />
+      )}
+
       <div className="ml-auto flex items-center gap-2.5">
         <button
           type="button"
@@ -28,7 +36,11 @@ export function DatosToolbar() {
         </button>
 
         <DownloadMenu />
-        <InfoTip />
+        <InfoTip label="¿Qué archivos acepta?" title="Archivos aceptados">
+          Acepta el reporte mensual o anual del sistema contable (con o sin línea de centro de
+          costo), o uno editado por la app. El consolidado por centros de costo estará disponible
+          próximamente.
+        </InfoTip>
       </div>
 
       <CostCenterUploadModal open={uploadOpen} onClose={() => setUploadOpen(false)} />
@@ -183,42 +195,5 @@ function DownloadItem({
         <span className="text-[11.5px] leading-snug text-faint">{description}</span>
       </span>
     </button>
-  );
-}
-
-/** Accepted-files hint: a dark tooltip shown on hover or click of an info button. */
-function InfoTip() {
-  const [open, setOpen] = useState(false);
-
-  return (
-    <div
-      className="relative flex"
-      onMouseEnter={() => setOpen(true)}
-      onMouseLeave={() => setOpen(false)}
-    >
-      <button
-        type="button"
-        aria-label="¿Qué archivos acepta?"
-        aria-expanded={open}
-        onClick={() => setOpen((value) => !value)}
-        className="flex h-[34px] w-[34px] items-center justify-center rounded-[8px] border border-border bg-surface text-faint transition-colors hover:text-muted"
-      >
-        <Info size={16} />
-      </button>
-      {open && (
-        <div
-          role="tooltip"
-          className="absolute right-0 top-[calc(100%+8px)] z-30 w-[288px] rounded-[10px] bg-ink px-[13px] py-[11px] text-[12px] leading-normal text-white/85 shadow-[0_14px_36px_rgba(15,23,42,0.28)]"
-        >
-          <div className="mb-1 flex items-center gap-1.5 font-semibold text-white">
-            <Info size={13} />
-            Archivos aceptados
-          </div>
-          Acepta el reporte mensual o anual del sistema contable (con o sin línea de centro de
-          costo), o uno editado por la app. El consolidado por centros de costo estará disponible
-          próximamente.
-        </div>
-      )}
-    </div>
   );
 }

@@ -6,7 +6,6 @@ import type { DatosGrid, DatosRow, DatosSort, DatosSortKey } from "@/lib/profit-
 import { toDatosGrid } from "@/lib/profit-loss/derive";
 import { focusAccounts } from "@/lib/profit-loss/filter";
 import { CellEditor, type EditorAnchor } from "./cell-editor";
-import { CostCenterTabs } from "./cost-center-tabs";
 import { flattenSorted } from "./datos-utils";
 import { NoticeBanner } from "./notice-banner";
 import { DatosTable } from "./datos-table";
@@ -40,10 +39,8 @@ export function DatosView() {
     frequency,
     allowed,
     saveEdit,
-    mode,
     views,
     activeCenterId,
-    setActiveCenter,
     warnings,
     selectedAccounts,
     collapsed,
@@ -128,10 +125,6 @@ export function DatosView() {
 
   return (
     <div className="px-7 py-5">
-      {mode === "multi" && (
-        <CostCenterTabs views={views} activeId={activeCenterId} onSelect={setActiveCenter} />
-      )}
-
       {warnings.length > 0 && !warningsDismissed && (
         <NoticeBanner onDismiss={() => setWarningsDismissed(true)}>
           El espacio de trabajo tiene {warnings.length} {warnings.length === 1 ? "aviso" : "avisos"}{" "}
