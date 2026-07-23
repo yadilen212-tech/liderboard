@@ -48,8 +48,10 @@ function DatosTableRowImpl({
 
   // The result row is fully derived (no editor). Movement accounts (leaves) edit their
   // value + comment; parent accounts roll up from their movements, so they comment only.
+  // `row.movement` comes from the source tree, so a level-capped parent (shown without
+  // children) stays comment-only instead of falsely looking editable.
   const openable = editable && !row.isResult;
-  const valueEditable = openable && !hasChildren;
+  const valueEditable = openable && Boolean(row.movement);
 
   return (
     <tr style={{ contentVisibility: "auto", containIntrinsicSize: "auto 39px" }}>

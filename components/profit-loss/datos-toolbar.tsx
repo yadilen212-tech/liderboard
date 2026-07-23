@@ -1,93 +1,58 @@
 "use client";
 
-import {
-  ChevronDown,
-  EyeOff,
-  FilePlus2,
-  FileSpreadsheet,
-  Info,
-  Loader2,
-  Upload,
-} from "lucide-react";
-import { type ReactNode, useCallback, useRef, useState } from "react";
-import { SegmentedControl } from "@/components/ui/segmented-control";
+import { ChevronDown, FilePlus2, FileSpreadsheet, Info, Loader2, Upload } from "lucide-react";
+import { type ReactNode, useCallback, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/cn";
+import { matchExpandLevel } from "@/lib/profit-loss/filter";
 import { usePygData } from "./pyg-data-provider";
 
-type Group = "todos" | "ingresos" | "costos";
-type Level = "1" | "2" | "3" | "4" | "todo";
-
-const GROUPS: { value: Group; label: string }[] = [
-  { value: "todos", label: "Todos" },
-  { value: "ingresos", label: "Ingresos" },
-  { value: "costos", label: "Costos" },
-];
-
-const LEVELS = ["1", "2", "3", "4"] as const;
-
 /**
- * Datos-tab action bar (visual only), rendered under the FILTROS row for
- * Pérdidas y Ganancias › Datos. Left: the "cuentas mayores" filters — account
- * group, hide-zeros, and expand-to-level. Right: the Excel actions — upload,
- * a download menu, and an accepted-files info tip. Filter state is UI-local;
- * the upload button drives the real pipeline via usePygData().
+ * Datos-tab action bar, rendered under the FILTROS row for Pérdidas y Ganancias › Datos.
+ * Left: "Expandir" — collapse/expand the tree down to a level (its range derived from the
+ * file's deepest movement account; hidden with no data or a flat file). Right: the Excel
+ * actions — upload, a download menu, and an accepted-files info tip.
  */
 export function DatosToolbar() {
-  const [group, setGroup] = useState<Group>("todos");
-  const [hideZeros, setHideZeros] = useState(false);
-  const [level, setLevel] = useState<Level | null>(null);
-  const { uploadFile, isUploading } = usePygData();
+  const { dataset, deepestLevel, collapsed, setExpandLevel, uploadFile, isUploading } =
+    usePygData();
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const accounts = dataset?.accounts;
+  const activeExpand = useMemo(
+    () => (accounts ? matchExpandLevel(accounts, collapsed, deepestLevel) : null),
+    [accounts, collapsed, deepestLevel],
+  );
+  const expandLevels =
+    deepestLevel >= 2 ? Array.from({ length: deepestLevel - 1 }, (_, i) => i + 1) : [];
 
   return (
     <div className="flex shrink-0 flex-wrap items-center gap-2.5 border-b border-border bg-surface-sunken px-7 py-2.5">
-      <SegmentedControl
-        variant="bar"
-        ariaLabel="Grupo de cuentas"
-        options={GROUPS}
-        value={group}
-        onChange={setGroup}
-      />
-
-      <button
-        type="button"
-        aria-pressed={hideZeros}
-        onClick={() => setHideZeros((value) => !value)}
-        className={cn(
-          "inline-flex h-[34px] items-center gap-2 rounded-[9px] border px-3 text-[12.5px] font-semibold transition-colors",
-          hideZeros
-            ? "border-brand bg-brand-soft text-brand"
-            : "border-border bg-surface text-muted hover:bg-canvas",
-        )}
-      >
-        <EyeOff size={14} />
-        Ocultar ceros
-      </button>
-
-      <span className="h-[22px] w-px bg-border" />
-
-      <span className="text-[10.5px] font-semibold uppercase tracking-[0.6px] text-faintest">
-        Expandir
-      </span>
-      <div className="flex items-center gap-1.5">
-        {LEVELS.map((value) => (
-          <LevelButton
-            key={value}
-            active={level === value}
-            onClick={() => setLevel(value)}
-            className="w-[30px]"
-          >
-            {value}
-          </LevelButton>
-        ))}
-        <LevelButton
-          active={level === "todo"}
-          onClick={() => setLevel("todo")}
-          className="px-[11px]"
-        >
-          Todo
-        </LevelButton>
-      </div>
+      {expandLevels.length > 0 && (
+        <>
+          <span className="text-[10.5px] font-semibold uppercase tracking-[0.6px] text-faintest">
+            Expandir
+          </span>
+          <div className="flex items-center gap-1.5">
+            {expandLevels.map((level) => (
+              <LevelButton
+                key={level}
+                active={activeExpand === level}
+                onClick={() => setExpandLevel(level)}
+                className="w-[30px]"
+              >
+                {level}
+              </LevelButton>
+            ))}
+            <LevelButton
+              active={activeExpand === "all"}
+              onClick={() => setExpandLevel("all")}
+              className="px-[11px]"
+            >
+              Todo
+            </LevelButton>
+          </div>
+        </>
+      )}
 
       <div className="ml-auto flex items-center gap-2.5">
         <input

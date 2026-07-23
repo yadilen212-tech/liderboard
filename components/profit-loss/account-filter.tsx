@@ -12,20 +12,24 @@ import {
 } from "@/components/ui/dropdown";
 import { EmptyState } from "@/components/ui/empty-state";
 import { SearchInput } from "@/components/ui/search-input";
+import type { AccountOption } from "@/lib/profit-loss/filter";
 
-export interface AccountOption {
-  code: string;
-  name: string;
+export interface AccountFilterProps {
+  /** Accounts parsed from the loaded Excel; empty shows the "carga un Excel" state. */
+  accounts: AccountOption[];
+  /** Focus selection (empty = no filter). */
+  selected: ReadonlySet<string>;
+  onToggle: (code: string) => void;
+  onClear: () => void;
 }
 
 /**
- * "Cuenta contable" filter. The account list is parsed from the uploaded P&L
- * Excel; until one is loaded `accounts` is empty and the panel shows an empty
- * state. Wire the parsed accounts to `accounts` to activate search + selection.
+ * "Cuenta contable" filter. The account list comes from the uploaded P&L Excel via
+ * PygDataProvider; until one is loaded `accounts` is empty and the panel shows an empty
+ * state. Selection is prop-driven so the Datos table can focus the chosen accounts.
  */
-export function AccountFilter({ accounts = [] }: { accounts?: AccountOption[] }) {
+export function AccountFilter({ accounts, selected, onToggle, onClear }: AccountFilterProps) {
   const [query, setQuery] = useState("");
-  const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const visible = useMemo(
     () =>
@@ -36,18 +40,6 @@ export function AccountFilter({ accounts = [] }: { accounts?: AccountOption[] })
       ),
     [accounts, query],
   );
-
-  const toggle = (code: string) => {
-    setSelected((current) => {
-      const next = new Set(current);
-      if (next.has(code)) {
-        next.delete(code);
-      } else {
-        next.add(code);
-      }
-      return next;
-    });
-  };
 
   return (
     <Dropdown>
@@ -74,14 +66,14 @@ export function AccountFilter({ accounts = [] }: { accounts?: AccountOption[] })
                   key={account.code}
                   code={account.code}
                   selected={selected.has(account.code)}
-                  onToggle={() => toggle(account.code)}
+                  onToggle={() => onToggle(account.code)}
                 >
                   {account.name}
                 </DropdownOption>
               ))}
             </div>
             <DropdownFooter>
-              <Button variant="ghost" size="sm" onClick={() => setSelected(new Set())}>
+              <Button variant="ghost" size="sm" onClick={onClear}>
                 Quitar selección
               </Button>
               <Button variant="primary" size="sm">

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { MONTHS_SHORT_ES } from "@/lib/date";
 import type { DatosGrid, DatosRow, DatosSort, DatosSortKey } from "@/lib/profit-loss/datos-types";
 import { toDatosGrid } from "@/lib/profit-loss/derive";
+import { filterDatosRows } from "@/lib/profit-loss/filter";
 import { CellEditor, type EditorAnchor } from "./cell-editor";
 import { flattenSorted } from "./datos-utils";
 import { NoticeBanner } from "./notice-banner";
@@ -32,10 +33,20 @@ const EMPTY_GRID: DatosGrid = {
  * <CostCenterTabs> above the table gated on the dataset actually carrying centers.
  */
 export function DatosView() {
-  const { dataset, edits, frequency, allowed, saveEdit, uploadError, clearUploadError } =
-    usePygData();
+  const {
+    dataset,
+    edits,
+    frequency,
+    allowed,
+    saveEdit,
+    uploadError,
+    clearUploadError,
+    selectedAccounts,
+    maxLevel,
+    collapsed,
+    toggleCollapsed,
+  } = usePygData();
 
-  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
   const [sort, setSort] = useState<DatosSort | null>(null);
   const [editing, setEditing] = useState<EditingState | null>(null);
   const [warningsDismissed, setWarningsDismissed] = useState(false);
@@ -51,9 +62,14 @@ export function DatosView() {
     () => (dataset ? toDatosGrid(dataset, edits, effectiveFrequency) : EMPTY_GRID),
     [dataset, edits, effectiveFrequency],
   );
+  // Account focus + level cap decide which rows show; amounts (and Utilidad) are untouched.
+  const filteredRows = useMemo(
+    () => filterDatosRows(grid.rows, { selected: selectedAccounts, maxLevel }),
+    [grid.rows, selectedAccounts, maxLevel],
+  );
   const visibleRows = useMemo(
-    () => flattenSorted(grid.rows, collapsed, sort),
-    [grid.rows, collapsed, sort],
+    () => flattenSorted(filteredRows, collapsed, sort),
+    [filteredRows, collapsed, sort],
   );
 
   // A newly loaded dataset should surface its own warnings even if the previous file's
@@ -73,18 +89,6 @@ export function DatosView() {
   // Value edits and comments only make sense against a concrete month.
   const editable = Boolean(dataset) && effectiveFrequency === "mensual";
   const showTotal = effectiveFrequency !== "anual";
-
-  const onToggle = useCallback((code: string) => {
-    setCollapsed((prev) => {
-      const next = new Set(prev);
-      if (next.has(code)) {
-        next.delete(code);
-      } else {
-        next.add(code);
-      }
-      return next;
-    });
-  }, []);
 
   const onSort = useCallback((key: DatosSortKey) => {
     setSort((prev) => nextSort(prev, key));
@@ -140,7 +144,7 @@ export function DatosView() {
         editable={editable}
         showTotal={showTotal}
         onSort={onSort}
-        onToggle={onToggle}
+        onToggle={toggleCollapsed}
         onEditCell={onEditCell}
       />
 

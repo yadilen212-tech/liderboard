@@ -17,6 +17,12 @@ export interface DatosRow {
   name: string;
   /** Tree depth, 1..n. Drives the name-column indent. */
   level: number;
+  /**
+   * True for a movement (leaf) account — the only kind whose value is editable. Comes from
+   * the source tree, NOT the displayed one, so a level-capped parent shown without children
+   * stays comment-only. Parents and the result row are false.
+   */
+  movement?: boolean;
   /** The "Utilidad o Pérdida" summary row, styled and pinned apart from accounts. */
   isResult?: boolean;
   /** One cell per month; `cells[i]` aligns to `DatosGrid.months[i]`. */

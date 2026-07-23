@@ -1,6 +1,6 @@
 "use client";
 
-import { Building2, ChevronDown, GitCompare, Layers, SlidersHorizontal } from "lucide-react";
+import { ChevronDown, GitCompare, Layers, SlidersHorizontal } from "lucide-react";
 import { useState } from "react";
 import { Dropdown, DropdownPanel, DropdownTrigger } from "@/components/ui/dropdown";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -20,9 +20,21 @@ const GRANULARITIES: { value: Frequency; label: string }[] = [
   { value: "anual", label: "Anual" },
 ];
 
-/** PyG filter section rendered under the tabs. Frequency is wired to the shared PyG dataset; the rest is visual only. */
+/** PyG filter section rendered under the tabs. Account + level filters and the frequency
+ * are wired to the shared PyG dataset; only "Comparar" is still visual. */
 export function PygToolbar({ activeTab }: { activeTab: ModuleTabId }) {
-  const { frequency, allowed, setFrequency } = usePygData();
+  const {
+    frequency,
+    allowed,
+    setFrequency,
+    deepestLevel,
+    accountOptions,
+    selectedAccounts,
+    toggleAccount,
+    clearAccounts,
+    maxLevel,
+    setMaxLevel,
+  } = usePygData();
   const granularityOptions = GRANULARITIES.map((option) => ({
     ...option,
     disabled: !allowed.includes(option.value),
@@ -35,9 +47,13 @@ export function PygToolbar({ activeTab }: { activeTab: ModuleTabId }) {
       <Toolbar>
         <ToolbarLabel icon={<SlidersHorizontal size={15} />}>Filtros</ToolbarLabel>
 
-        <AccountFilter />
-        <NivelFilter />
-        <CostCenterFilter />
+        <AccountFilter
+          accounts={accountOptions}
+          selected={selectedAccounts}
+          onToggle={toggleAccount}
+          onClear={clearAccounts}
+        />
+        <NivelFilter deepest={deepestLevel} value={maxLevel} onChange={setMaxLevel} />
 
         {canCompare && (
           <button
@@ -78,60 +94,80 @@ export function PygToolbar({ activeTab }: { activeTab: ModuleTabId }) {
   );
 }
 
-const NIVEL_OPTIONS: { value: string; label: string }[] = [
-  { value: "all", label: "Todos los niveles" },
-  { value: "1", label: "Nivel 1" },
-  { value: "2", label: "Nivel 2" },
-  { value: "3", label: "Nivel 3" },
-  { value: "4", label: "Nivel 4" },
-];
-
-/** "Mostrar hasta nivel" — the depth of the account tree to show. Static levels. */
-function NivelFilter() {
-  const [level, setLevel] = useState("all");
+/**
+ * "Mostrar hasta nivel" — caps the depth of the account tree. The options run 1..(deepest-1)
+ * off the loaded file's deepest movement account; "Todos los niveles" clears the cap. With no
+ * data (or a flat file) the panel shows an empty state instead of levels.
+ */
+function NivelFilter({
+  deepest,
+  value,
+  onChange,
+}: {
+  deepest: number;
+  value: number | null;
+  onChange: (level: number | null) => void;
+}) {
+  const levels = deepest >= 2 ? Array.from({ length: deepest - 1 }, (_, i) => i + 1) : [];
 
   return (
     <Dropdown>
-      <DropdownTrigger icon={<Layers size={15} />} active={level !== "all"}>
-        {level === "all" ? "Nivel" : `Nivel ${level}`}
+      <DropdownTrigger icon={<Layers size={15} />} active={value !== null}>
+        {value === null ? "Nivel" : `Nivel ${value}`}
       </DropdownTrigger>
       <DropdownPanel width={216}>
-        <div className="px-1.5 pb-1.5 text-[10.5px] font-semibold uppercase tracking-[0.5px] text-faintest">
-          Mostrar hasta nivel
-        </div>
-        <div className="-mx-1">
-          {NIVEL_OPTIONS.map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              onClick={() => setLevel(option.value)}
-              className={cn(
-                "flex w-full items-center rounded-lg px-2 py-1.5 text-left text-[12.5px] transition-colors",
-                level === option.value
-                  ? "bg-brand-soft font-medium text-brand"
-                  : "text-ink hover:bg-canvas",
-              )}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
+        {levels.length === 0 ? (
+          <EmptyState icon={<Layers size={22} />} className="py-4">
+            {deepest === 0
+              ? "Carga un Excel de Pérdidas y Ganancias para filtrar por nivel."
+              : "El archivo cargado no tiene subniveles de cuenta."}
+          </EmptyState>
+        ) : (
+          <>
+            <div className="px-1.5 pb-1.5 text-[10.5px] font-semibold uppercase tracking-[0.5px] text-faintest">
+              Mostrar hasta nivel
+            </div>
+            <div className="-mx-1">
+              <NivelOption
+                label="Todos los niveles"
+                active={value === null}
+                onClick={() => onChange(null)}
+              />
+              {levels.map((level) => (
+                <NivelOption
+                  key={level}
+                  label={`Nivel ${level}`}
+                  active={value === level}
+                  onClick={() => onChange(level)}
+                />
+              ))}
+            </div>
+          </>
+        )}
       </DropdownPanel>
     </Dropdown>
   );
 }
 
-/** "Centro de costos" — populated from the Excel; empty state until one loads. */
-function CostCenterFilter() {
+function NivelOption({
+  label,
+  active,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
   return (
-    <Dropdown>
-      <DropdownTrigger icon={<Building2 size={15} />}>Centro de costos</DropdownTrigger>
-      <DropdownPanel width={262}>
-        <div className="px-1.5 pb-1.5 text-[10.5px] font-semibold uppercase tracking-[0.5px] text-faintest">
-          Centro de costos · Sucursal
-        </div>
-        <EmptyState className="py-4">Los datos cargados no incluyen centros de costo.</EmptyState>
-      </DropdownPanel>
-    </Dropdown>
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "flex w-full items-center rounded-lg px-2 py-1.5 text-left text-[12.5px] transition-colors",
+        active ? "bg-brand-soft font-medium text-brand" : "text-ink hover:bg-canvas",
+      )}
+    >
+      {label}
+    </button>
   );
 }

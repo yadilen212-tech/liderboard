@@ -1,0 +1,172 @@
+import { describe, expect, it } from "vitest";
+import type { DatosRow } from "./datos-types";
+import {
+  accountOptions,
+  capToLevel,
+  collapsedForLevel,
+  deepestLevel,
+  filterDatosRows,
+  focusAccounts,
+  matchExpandLevel,
+} from "./filter";
+import { MONTHLY_ACCOUNTS } from "./parse.fixtures";
+
+/** Minimal DatosRow builder for tree-shape tests. */
+function row(code: string, level: number, children?: DatosRow[]): DatosRow {
+  return {
+    code,
+    name: code,
+    level,
+    cells: [{ value: 0 }],
+    ...(children ? { children } : {}),
+  };
+}
+
+/** The MONTHLY_ACCOUNTS fixture as a DatosRow tree (values irrelevant to these tests). */
+function sampleRows(): DatosRow[] {
+  return [
+    row("4", 1, [
+      row("4.1", 2, [row("4.1.1", 3), row("4.1.2", 3), row("4.1.3", 3)]),
+      row("4.2", 2),
+    ]),
+    row("5", 1, [row("5.1", 2, [row("5.1.1", 3), row("5.1.2", 3, [row("5.1.2.1", 4)])])]),
+  ];
+}
+
+const RESULT_ROW: DatosRow = {
+  code: "",
+  name: "Utilidad o Pérdida",
+  level: 1,
+  isResult: true,
+  cells: [{ value: 0 }],
+};
+
+const codes = (rows: DatosRow[]): string[] =>
+  rows.flatMap((r) => [r.code, ...codes(r.children ?? [])]);
+
+describe("deepestLevel", () => {
+  it("returns the depth of the deepest movement account", () => {
+    expect(deepestLevel(MONTHLY_ACCOUNTS)).toBe(4);
+  });
+
+  it("returns 0 for no accounts", () => {
+    expect(deepestLevel([])).toBe(0);
+  });
+});
+
+describe("accountOptions", () => {
+  it("lists every account (parents included) in file order", () => {
+    const options = accountOptions(MONTHLY_ACCOUNTS);
+    expect(options[0]).toEqual({ code: "4", name: "Ingresos" });
+    expect(options.map((o) => o.code)).toEqual([
+      "4",
+      "4.1",
+      "4.1.1",
+      "4.1.2",
+      "4.1.3",
+      "4.2",
+      "5",
+      "5.1",
+      "5.1.1",
+      "5.1.2",
+      "5.1.2.1",
+    ]);
+  });
+});
+
+describe("focusAccounts", () => {
+  it("returns the same rows when nothing is selected", () => {
+    const rows = sampleRows();
+    expect(focusAccounts(rows, new Set())).toBe(rows);
+  });
+
+  it("keeps the selected account with its whole subtree", () => {
+    const kept = focusAccounts(sampleRows(), new Set(["4.1"]));
+    // 4 kept as context, 4.1 with all its children, 4.2 and the whole 5 branch pruned.
+    expect(codes(kept)).toEqual(["4", "4.1", "4.1.1", "4.1.2", "4.1.3"]);
+  });
+
+  it("keeps ancestor context rows but prunes their unselected siblings", () => {
+    const kept = focusAccounts(sampleRows(), new Set(["5.1.2.1"]));
+    expect(codes(kept)).toEqual(["5", "5.1", "5.1.2", "5.1.2.1"]);
+  });
+
+  it("keeps a selected leaf even with no descendants", () => {
+    const kept = focusAccounts(sampleRows(), new Set(["4.2"]));
+    expect(codes(kept)).toEqual(["4", "4.2"]);
+  });
+
+  it("always keeps the Utilidad result row", () => {
+    const kept = focusAccounts([...sampleRows(), RESULT_ROW], new Set(["4.1"]));
+    expect(kept.at(-1)).toBe(RESULT_ROW);
+  });
+
+  it("preserves node references for fully-kept subtrees", () => {
+    const rows = sampleRows();
+    const kept = focusAccounts(rows, new Set(["4"]));
+    expect(kept[0]).toBe(rows[0]);
+  });
+});
+
+describe("capToLevel", () => {
+  it("returns the same rows when maxLevel is null", () => {
+    const rows = sampleRows();
+    expect(capToLevel(rows, null)).toBe(rows);
+  });
+
+  it("drops rows deeper than the cap", () => {
+    const capped = capToLevel(sampleRows(), 2);
+    expect(codes(capped)).toEqual(["4", "4.1", "4.2", "5", "5.1"]);
+  });
+
+  it("cap at 1 leaves only the roots", () => {
+    const capped = capToLevel(sampleRows(), 1);
+    expect(codes(capped)).toEqual(["4", "5"]);
+  });
+
+  it("leaves the result row untouched", () => {
+    const capped = capToLevel([...sampleRows(), RESULT_ROW], 1);
+    expect(capped.at(-1)).toBe(RESULT_ROW);
+  });
+});
+
+describe("filterDatosRows", () => {
+  it("composes account focus then depth cap", () => {
+    const filtered = filterDatosRows(sampleRows(), {
+      selected: new Set(["5"]),
+      maxLevel: 3,
+    });
+    // Focus to the 5 branch, then hide level-4 (5.1.2.1).
+    expect(codes(filtered)).toEqual(["5", "5.1", "5.1.1", "5.1.2"]);
+  });
+});
+
+describe("collapsedForLevel", () => {
+  it("collapses every parent at or below the level", () => {
+    // level 2 → parents at level >= 2 collapse (their children hide): 4.1, 5.1, 5.1.2.
+    expect(collapsedForLevel(MONTHLY_ACCOUNTS, 2)).toEqual(new Set(["4.1", "5.1", "5.1.2"]));
+  });
+
+  it("level 1 collapses all parents (only roots visible)", () => {
+    expect(collapsedForLevel(MONTHLY_ACCOUNTS, 1)).toEqual(
+      new Set(["4", "4.1", "5", "5.1", "5.1.2"]),
+    );
+  });
+});
+
+describe("matchExpandLevel", () => {
+  const deepest = deepestLevel(MONTHLY_ACCOUNTS);
+
+  it("maps an empty collapsed set to fully expanded", () => {
+    expect(matchExpandLevel(MONTHLY_ACCOUNTS, new Set(), deepest)).toBe("all");
+  });
+
+  it("maps a level's collapsed set back to that level", () => {
+    const collapsed = collapsedForLevel(MONTHLY_ACCOUNTS, 2);
+    expect(matchExpandLevel(MONTHLY_ACCOUNTS, collapsed, deepest)).toBe(2);
+  });
+
+  it("returns null for a custom collapse state", () => {
+    expect(matchExpandLevel(MONTHLY_ACCOUNTS, new Set(["4.1"]), deepest)).toBeNull();
+  });
+});

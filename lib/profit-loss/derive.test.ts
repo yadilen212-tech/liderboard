@@ -235,6 +235,16 @@ describe("toDatosGrid", () => {
     expect(flattenGrid(quarterly).get("4.1.1")?.cells[1]?.comment).toBeUndefined();
   });
 
+  it("marks leaf accounts as movement and parents/result as not", () => {
+    const grid = toDatosGrid(monthlyDataset(), [], "mensual");
+    const rows = flattenGrid(grid);
+    expect(rows.get("4.1.1")?.movement).toBe(true); // leaf
+    expect(rows.get("4.2")?.movement).toBe(true); // leaf at level 2
+    expect(rows.get("4")?.movement).toBe(false); // parent
+    expect(rows.get("4.1")?.movement).toBe(false); // parent
+    expect(grid.rows.find((row) => row.isResult)?.movement).toBe(false);
+  });
+
   it("renders an annual-base dataset as a single Total column", () => {
     const dataset: PygDataset = {
       ...monthlyDataset(),

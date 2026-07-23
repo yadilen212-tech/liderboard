@@ -238,6 +238,7 @@ export function toDatosGrid(
     code: "",
     name: "Utilidad o Pérdida",
     level: 1,
+    movement: false,
     isResult: true,
     cells: resultValues.map((value) => ({ value })),
   });
@@ -275,6 +276,7 @@ function toDatosRow(
     code: node.code,
     name: node.name,
     level: node.level,
+    movement: node.children.length === 0,
     cells,
     ...(node.children.length > 0
       ? { children: node.children.map((child) => toDatosRow(child, base, frequency, comments)) }
