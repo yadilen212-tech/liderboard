@@ -1,9 +1,10 @@
 "use client";
 
 import { ChevronDown, FilePlus2, FileSpreadsheet, Info, Loader2, Upload } from "lucide-react";
-import { type ReactNode, useCallback, useMemo, useRef, useState } from "react";
+import { type ReactNode, useCallback, useMemo, useState } from "react";
 import { cn } from "@/lib/cn";
 import { matchExpandLevel } from "@/lib/profit-loss/filter";
+import { CostCenterUploadModal } from "./cost-center-upload-modal";
 import { usePygData } from "./pyg-data-provider";
 
 /**
@@ -13,9 +14,8 @@ import { usePygData } from "./pyg-data-provider";
  * actions — upload, a download menu, and an accepted-files info tip.
  */
 export function DatosToolbar() {
-  const { dataset, deepestLevel, collapsed, setExpandLevel, uploadFile, isUploading } =
-    usePygData();
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const { dataset, deepestLevel, collapsed, setExpandLevel } = usePygData();
+  const [uploadOpen, setUploadOpen] = useState(false);
 
   const accounts = dataset?.accounts;
   const activeExpand = useMemo(
@@ -49,33 +49,20 @@ export function DatosToolbar() {
       )}
 
       <div className="ml-auto flex items-center gap-2.5">
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".xls,.xlsx"
-          className="hidden"
-          onChange={(event) => {
-            const file = event.target.files?.[0];
-            if (file) {
-              void uploadFile(file);
-            }
-            // Allow re-selecting the same file after an error or replacement.
-            event.target.value = "";
-          }}
-        />
         <button
           type="button"
-          disabled={isUploading}
-          onClick={() => fileInputRef.current?.click()}
-          className="inline-flex h-[34px] items-center gap-2 rounded-[8px] bg-brand px-[13px] text-[12.5px] font-semibold text-white transition-colors hover:bg-brand-hover disabled:cursor-wait disabled:opacity-70"
+          onClick={() => setUploadOpen(true)}
+          className="inline-flex h-[34px] items-center gap-2 rounded-[8px] bg-brand px-[13px] text-[12.5px] font-semibold text-white transition-colors hover:bg-brand-hover"
         >
-          {isUploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
-          {isUploading ? "Procesando…" : "Cargar Excel"}
+          <Upload size={14} />
+          Cargar Excel
         </button>
 
         <DownloadMenu />
         <InfoTip />
       </div>
+
+      <CostCenterUploadModal open={uploadOpen} onClose={() => setUploadOpen(false)} />
     </div>
   );
 }
