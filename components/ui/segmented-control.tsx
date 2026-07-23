@@ -5,6 +5,8 @@ import { cn } from "@/lib/cn";
 interface SegmentOption<T extends string> {
   value: T;
   label: string;
+  /** Renders the segment non-interactive (e.g. frequency below the file's base). */
+  disabled?: boolean;
 }
 
 type SegmentedVariant = "bar" | "pills" | "track";
@@ -47,9 +49,11 @@ export function SegmentedControl<T extends string>({
             key={option.value}
             type="button"
             aria-pressed={active}
+            disabled={option.disabled}
             onClick={() => onChange(option.value)}
             className={cn(
               "font-semibold transition-colors",
+              option.disabled && "cursor-not-allowed opacity-40",
               variant === "bar" &&
                 cn(
                   "px-3 py-[7px] text-xs",

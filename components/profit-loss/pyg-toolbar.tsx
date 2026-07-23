@@ -8,21 +8,26 @@ import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Toolbar, ToolbarLabel } from "@/components/ui/toolbar";
 import { cn } from "@/lib/cn";
 import type { ModuleTabId } from "@/lib/modules";
+import type { Frequency } from "@/lib/profit-loss/types";
 import { AccountFilter } from "./account-filter";
 import { CompareBar } from "./compare-bar";
 import { PeriodFilter } from "./period-filter";
+import { usePygData } from "./pyg-data-provider";
 
-type Granularity = "mes" | "trim" | "sem";
-
-const GRANULARITIES: { value: Granularity; label: string }[] = [
-  { value: "mes", label: "Mensual" },
-  { value: "trim", label: "Trimestral" },
-  { value: "sem", label: "Semestral" },
+const GRANULARITIES: { value: Frequency; label: string }[] = [
+  { value: "mensual", label: "Mensual" },
+  { value: "trimestral", label: "Trimestral" },
+  { value: "semestral", label: "Semestral" },
+  { value: "anual", label: "Anual" },
 ];
 
-/** PyG filter section rendered under the tabs. Visual only. */
+/** PyG filter section rendered under the tabs. Frequency is wired to the shared PyG dataset; the rest is visual only. */
 export function PygToolbar({ activeTab }: { activeTab: ModuleTabId }) {
-  const [granularity, setGranularity] = useState<Granularity>("mes");
+  const { frequency, allowed, setFrequency } = usePygData();
+  const granularityOptions = GRANULARITIES.map((option) => ({
+    ...option,
+    disabled: !allowed.includes(option.value),
+  }));
   const [compareOpen, setCompareOpen] = useState(false);
   const canCompare = activeTab === "graficos" || activeTab === "analisis";
 
@@ -61,10 +66,10 @@ export function PygToolbar({ activeTab }: { activeTab: ModuleTabId }) {
           <SegmentedControl
             variant="track"
             className="bg-border-faint"
-            ariaLabel="Granularidad"
-            options={GRANULARITIES}
-            value={granularity}
-            onChange={setGranularity}
+            ariaLabel="Frecuencia"
+            options={granularityOptions}
+            value={frequency}
+            onChange={setFrequency}
           />
           <PeriodFilter />
         </div>
