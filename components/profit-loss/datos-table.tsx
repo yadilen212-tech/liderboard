@@ -19,6 +19,8 @@ export interface DatosTableProps {
   grid: DatosGrid;
   rows: FlatRow[];
   sort: DatosSort | null;
+  editable: boolean;
+  showTotal: boolean;
   onSort: (key: DatosSortKey) => void;
   onToggle: (code: string) => void;
   onEditCell: (code: string, col: number, anchor: EditorAnchor, valueEditable: boolean) => void;
@@ -33,7 +35,16 @@ function sameKey(a: DatosSortKey, b: DatosSortKey): boolean {
 }
 
 /** One editable Estado de Resultados grid — for the whole company or a cost center. */
-export function DatosTable({ grid, rows, sort, onSort, onToggle, onEditCell }: DatosTableProps) {
+export function DatosTable({
+  grid,
+  rows,
+  sort,
+  editable,
+  showTotal,
+  onSort,
+  onToggle,
+  onEditCell,
+}: DatosTableProps) {
   const accountCount = rows.filter((flat) => !flat.row.isResult).length;
 
   return (
@@ -92,15 +103,17 @@ export function DatosTable({ grid, rows, sort, onSort, onToggle, onEditCell }: D
                       {month}
                     </SortableTh>
                   ))}
-                  <SortableTh
-                    align="right"
-                    active={sort ? sameKey(sort.key, "total") : false}
-                    dir={sort?.dir}
-                    onClick={() => onSort("total")}
-                    className="border-l border-border"
-                  >
-                    Total
-                  </SortableTh>
+                  {showTotal && (
+                    <SortableTh
+                      align="right"
+                      active={sort ? sameKey(sort.key, "total") : false}
+                      dir={sort?.dir}
+                      onClick={() => onSort("total")}
+                      className="border-l border-border"
+                    >
+                      Total
+                    </SortableTh>
+                  )}
                 </tr>
               </thead>
               <tbody>
@@ -111,6 +124,8 @@ export function DatosTable({ grid, rows, sort, onSort, onToggle, onEditCell }: D
                     hasChildren={flat.hasChildren}
                     isCollapsed={flat.isCollapsed}
                     monthsCount={grid.months.length}
+                    editable={editable}
+                    showTotal={showTotal}
                     onToggle={onToggle}
                     onEditCell={onEditCell}
                   />
@@ -134,10 +149,12 @@ export function DatosTable({ grid, rows, sort, onSort, onToggle, onEditCell }: D
               />
               Celda con comentario
             </LegendItem>
-            <LegendItem>
-              <MousePointerClick size={13} />
-              Clic en una celda para editar o comentar
-            </LegendItem>
+            {editable && (
+              <LegendItem>
+                <MousePointerClick size={13} />
+                Clic en una celda para editar o comentar
+              </LegendItem>
+            )}
             <span className="ml-auto font-mono">{accountCount} cuentas</span>
           </footer>
         </>

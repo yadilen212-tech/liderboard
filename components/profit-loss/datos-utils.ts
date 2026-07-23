@@ -4,12 +4,7 @@
  * unit-reasoned in isolation.
  */
 import { formatCurrency } from "@/lib/format";
-import {
-  cellKey,
-  type DatosCellEdit,
-  type DatosRow,
-  type DatosSort,
-} from "@/lib/profit-loss/datos-types";
+import type { DatosRow, DatosSort } from "@/lib/profit-loss/datos-types";
 
 /** A tree row, flattened for rendering, with the display flags a row needs. */
 export interface FlatRow {
@@ -29,44 +24,6 @@ export function formatAmount(value: number | null): string {
     return "–";
   }
   return formatCurrency(value);
-}
-
-/**
- * Overlays the edit map onto the tree, returning new node objects only along paths that
- * actually changed. Untouched subtrees keep their identity so memoized rows don't
- * re-render. Only month cells are editable — totals and result rows derive downstream.
- */
-export function applyEdits(rows: DatosRow[], edits: Map<string, DatosCellEdit>): DatosRow[] {
-  if (edits.size === 0) {
-    return rows;
-  }
-  return rows.map((row) => applyEditsToRow(row, edits));
-}
-
-function applyEditsToRow(row: DatosRow, edits: Map<string, DatosCellEdit>): DatosRow {
-  const children = row.children?.map((child) => applyEditsToRow(child, edits));
-  // Only movement accounts (leaves) hold an editable value; parents and the result row
-  // derive theirs, so an edit there may set a comment but never a value.
-  const isLeaf = !row.children?.length && !row.isResult;
-
-  let cellsChanged = false;
-  const cells = row.cells.map((cell, i) => {
-    const edit = row.isResult ? undefined : edits.get(cellKey(row.code, i));
-    if (!edit) {
-      return cell;
-    }
-    cellsChanged = true;
-    return {
-      value: isLeaf && edit.value !== undefined ? edit.value : cell.value,
-      comment: edit.comment !== undefined ? edit.comment : cell.comment,
-    };
-  });
-
-  const childrenChanged = children?.some((child, i) => child !== row.children?.[i]) ?? false;
-  if (!cellsChanged && !childrenChanged) {
-    return row;
-  }
-  return { ...row, cells: cellsChanged ? cells : row.cells, children };
 }
 
 function sortValue(row: DatosRow, sort: DatosSort): number | string {

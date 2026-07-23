@@ -8,10 +8,10 @@ import type { CostCenter } from "@/lib/profit-loss/datos-types";
  * The "Centro de costos" tab strip that sits above the Datos grid: one pill per center,
  * plus a hint line explaining what switching does.
  *
- * FUTURE WORK: this strip is only meaningful when the uploaded data actually carries
- * cost centers. Detection (does this Excel/ZIP split by sucursal?) is not built yet, so
- * for now it always renders from mock centers to preview the layout. Once detection
- * lands, gate the whole strip on "data has cost centers" and drop the mock source.
+ * FUTURE WORK: not rendered in this milestone — consolidated/multi-center uploads are
+ * rejected at parse time. When cost-center support lands, render this strip from the
+ * dataset's real centers (mock list lives in datos.fixtures.ts) gated on the data
+ * actually carrying centers.
  */
 export function CostCenterTabs({
   centers,

@@ -1,62 +1,56 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
-import { CellEditor, type EditorAnchor } from "./cell-editor";
-import { CostCenterTabs } from "./cost-center-tabs";
-import { DatosTable } from "./datos-table";
-import {
-  cellKey,
-  type CostCenter,
-  type DatosCellEdit,
-  type DatosGrid,
-  type DatosRow,
-  type DatosSort,
-  type DatosSortKey,
-} from "@/lib/profit-loss/datos-types";
 import { MONTHS_SHORT_ES } from "@/lib/date";
-import { applyEdits, flattenSorted } from "./datos-utils";
-import { MOCK_COST_CENTERS } from "./datos.fixtures";
+import type { DatosGrid, DatosRow, DatosSort, DatosSortKey } from "@/lib/profit-loss/datos-types";
+import { toDatosGrid } from "@/lib/profit-loss/derive";
+import { CellEditor, type EditorAnchor } from "./cell-editor";
+import { flattenSorted } from "./datos-utils";
+import { NoticeBanner } from "./notice-banner";
+import { DatosTable } from "./datos-table";
+import { usePygData } from "./pyg-data-provider";
 
 interface EditingState extends EditorAnchor {
   code: string;
   col: number;
-  /** Movement accounts edit their value; parents/result comment only. */
   valueEditable: boolean;
 }
 
-/**
- * The Datos tab body: cost-center tabs + the editable Estado de Resultados grid.
- *
- * Data is prop-driven so the Excel loader (built later) just supplies `grids`. With no
- * `grids` prop the view renders empty grids — one per cost center — so today's app shows
- * the empty state under the tab strip. `costCenters` defaults to a mock list so the
- * strip is visible now (see the FUTURE WORK note in `cost-center-tabs.tsx`).
- */
-export function DatosView({
-  grids,
-  costCenters = MOCK_COST_CENTERS,
-}: {
-  grids?: DatosGrid[];
-  costCenters?: CostCenter[];
-}) {
-  const resolvedGrids = useMemo(() => grids ?? emptyGridsFor(costCenters), [grids, costCenters]);
+const EMPTY_GRID: DatosGrid = {
+  id: "default",
+  title: "Estado de Resultados",
+  months: [...MONTHS_SHORT_ES],
+  rows: [],
+};
 
-  const [activeCenter, setActiveCenter] = useState(() => resolvedGrids[0]?.id ?? "default");
+/**
+ * The Datos tab body: the editable Estado de Resultados grid, fed by the uploaded
+ * Excel via PygDataProvider. Cell editing/commenting is MONTHLY-VIEW ONLY (see
+ * README, "Edición y frecuencias") — aggregated cells are read-only sums.
+ *
+ * FUTURE WORK (cost centers): when consolidated/multi-center support lands, render
+ * <CostCenterTabs> above the table gated on the dataset actually carrying centers.
+ */
+export function DatosView() {
+  const { dataset, edits, frequency, saveEdit, uploadError, clearUploadError } = usePygData();
+
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
   const [sort, setSort] = useState<DatosSort | null>(null);
-  const [edits, setEdits] = useState<Map<string, DatosCellEdit>>(() => new Map());
   const [editing, setEditing] = useState<EditingState | null>(null);
+  const [warningsDismissed, setWarningsDismissed] = useState(false);
 
-  const activeGrid = useMemo(
-    () => resolvedGrids.find((grid) => grid.id === activeCenter) ?? resolvedGrids[0],
-    [resolvedGrids, activeCenter],
+  const grid = useMemo(
+    () => (dataset ? toDatosGrid(dataset, edits, frequency) : EMPTY_GRID),
+    [dataset, edits, frequency],
   );
-
-  const effectiveRows = useMemo(() => applyEdits(activeGrid.rows, edits), [activeGrid.rows, edits]);
   const visibleRows = useMemo(
-    () => flattenSorted(effectiveRows, collapsed, sort),
-    [effectiveRows, collapsed, sort],
+    () => flattenSorted(grid.rows, collapsed, sort),
+    [grid.rows, collapsed, sort],
   );
+
+  // Value edits and comments only make sense against a concrete month.
+  const editable = Boolean(dataset) && frequency === "mensual";
+  const showTotal = frequency !== "anual";
 
   const onToggle = useCallback((code: string) => {
     setCollapsed((prev) => {
@@ -81,47 +75,60 @@ export function DatosView({
     [],
   );
 
-  const onSaveEdit = useCallback((value: number | null, comment: string) => {
-    setEditing((current) => {
-      if (!current) {
+  const onSaveEdit = useCallback(
+    (value: number | null, comment: string) => {
+      setEditing((current) => {
+        if (current) {
+          void saveEdit(
+            current.code,
+            current.col,
+            current.valueEditable ? value : undefined,
+            comment,
+          );
+        }
         return null;
-      }
-      setEdits((prev) => {
-        const next = new Map(prev);
-        // Only movement accounts persist a value; for parents we leave it untouched.
-        next.set(cellKey(current.code, current.col), {
-          value: current.valueEditable ? value : undefined,
-          comment: comment || undefined,
-        });
-        return next;
       });
-      return null;
-    });
-  }, []);
+    },
+    [saveEdit],
+  );
 
-  const editingCell = editing ? findCell(effectiveRows, editing.code) : null;
+  const editingRow = editing ? findRow(grid.rows, editing.code) : null;
 
   return (
     <div className="px-7 py-5">
-      <CostCenterTabs centers={costCenters} activeId={activeCenter} onSelect={setActiveCenter} />
+      {uploadError && (
+        <NoticeBanner tone="error" onDismiss={clearUploadError}>
+          {uploadError}
+        </NoticeBanner>
+      )}
+
+      {dataset && dataset.warnings.length > 0 && !warningsDismissed && (
+        <NoticeBanner tone="warning" onDismiss={() => setWarningsDismissed(true)}>
+          El archivo tiene {dataset.warnings.length}{" "}
+          {dataset.warnings.length === 1 ? "descuadre" : "descuadres"} de sumatoria; se muestran los
+          valores recalculados.
+        </NoticeBanner>
+      )}
 
       <DatosTable
-        grid={{ ...activeGrid, rows: effectiveRows }}
+        grid={grid}
         rows={visibleRows}
         sort={sort}
+        editable={editable}
+        showTotal={showTotal}
         onSort={onSort}
         onToggle={onToggle}
         onEditCell={onEditCell}
       />
 
-      {editing && editingCell && (
+      {editing && editingRow && (
         <CellEditor
           anchor={editing}
-          title={editingCell.name}
-          subtitle={`${activeGrid.months[editing.col] ?? MONTHS_SHORT_ES[editing.col]} · ${activeGrid.title}`}
+          title={editingRow.name}
+          subtitle={`${grid.months[editing.col] ?? ""} · ${grid.title}`}
           valueEditable={editing.valueEditable}
-          initialValue={editingCell.cells[editing.col]?.value ?? null}
-          initialComment={editingCell.cells[editing.col]?.comment ?? ""}
+          initialValue={editingRow.cells[editing.col]?.value ?? null}
+          initialComment={editingRow.cells[editing.col]?.comment ?? ""}
           onSave={onSaveEdit}
           onClose={() => setEditing(null)}
         />
@@ -147,32 +154,17 @@ function nextSort(prev: DatosSort | null, key: DatosSortKey): DatosSort | null {
 }
 
 /** Depth-first lookup of a row by account code. */
-function findCell(rows: DatosRow[], code: string): DatosRow | null {
+function findRow(rows: DatosRow[], code: string): DatosRow | null {
   for (const row of rows) {
     if (row.code === code) {
       return row;
     }
     if (row.children) {
-      const found = findCell(row.children, code);
+      const found = findRow(row.children, code);
       if (found) {
         return found;
       }
     }
   }
   return null;
-}
-
-/** One empty grid per cost center (or a single default) so the empty state shows per tab. */
-function emptyGridsFor(centers: CostCenter[]): DatosGrid[] {
-  const months = [...MONTHS_SHORT_ES];
-  if (centers.length === 0) {
-    return [{ id: "default", title: "Estado de Resultados", months, rows: [] }];
-  }
-  return centers.map((center) => ({
-    id: center.id,
-    title: center.name,
-    dotColor: center.color,
-    months,
-    rows: [],
-  }));
 }

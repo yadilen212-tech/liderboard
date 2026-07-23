@@ -15,6 +15,8 @@ export interface DatosTableRowProps {
   hasChildren: boolean;
   isCollapsed: boolean;
   monthsCount: number;
+  editable: boolean;
+  showTotal: boolean;
   onToggle: (code: string) => void;
   onEditCell: (code: string, col: number, anchor: EditorAnchor, valueEditable: boolean) => void;
 }
@@ -29,6 +31,8 @@ function DatosTableRowImpl({
   hasChildren,
   isCollapsed,
   monthsCount,
+  editable,
+  showTotal,
   onToggle,
   onEditCell,
 }: DatosTableRowProps) {
@@ -44,7 +48,7 @@ function DatosTableRowImpl({
 
   // The result row is fully derived (no editor). Movement accounts (leaves) edit their
   // value + comment; parent accounts roll up from their movements, so they comment only.
-  const openable = !row.isResult;
+  const openable = editable && !row.isResult;
   const valueEditable = openable && !hasChildren;
 
   return (
@@ -96,7 +100,7 @@ function DatosTableRowImpl({
         );
       })}
 
-      <TotalCell value={rowTotal(row)} emphasized={Boolean(row.isResult)} />
+      {showTotal && <TotalCell value={rowTotal(row)} emphasized={Boolean(row.isResult)} />}
     </tr>
   );
 }
