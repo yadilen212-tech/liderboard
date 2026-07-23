@@ -6,6 +6,7 @@ import type { DatosGrid, DatosRow, DatosSort, DatosSortKey } from "@/lib/profit-
 import { toDatosGrid } from "@/lib/profit-loss/derive";
 import { filterDatosRows } from "@/lib/profit-loss/filter";
 import { CellEditor, type EditorAnchor } from "./cell-editor";
+import { CostCenterTabs } from "./cost-center-tabs";
 import { flattenSorted } from "./datos-utils";
 import { NoticeBanner } from "./notice-banner";
 import { DatosTable } from "./datos-table";
@@ -39,8 +40,11 @@ export function DatosView() {
     frequency,
     allowed,
     saveEdit,
-    uploadError,
-    clearUploadError,
+    mode,
+    views,
+    activeCenterId,
+    setActiveCenter,
+    warnings,
     selectedAccounts,
     maxLevel,
     collapsed,
@@ -72,11 +76,11 @@ export function DatosView() {
     [filteredRows, collapsed, sort],
   );
 
-  // A newly loaded dataset should surface its own warnings even if the previous file's
-  // banner was dismissed.
+  // A newly loaded workspace should surface its own warnings even if the previous banner
+  // was dismissed.
   useEffect(() => {
     setWarningsDismissed(false);
-  }, [dataset?.id]);
+  }, [warnings]);
 
   // Aggregating to fewer columns (e.g. Mensual → Trimestral) can strand a month-column
   // sort on a column that no longer exists; clear it so the grid isn't "sorted" by nothing.
@@ -86,8 +90,9 @@ export function DatosView() {
     );
   }, [grid.months.length]);
 
-  // Value edits and comments only make sense against a concrete month.
-  const editable = Boolean(dataset) && effectiveFrequency === "mensual";
+  // Value edits/comments only make sense on an editable center in the concrete monthly view.
+  const activeView = views.find((v) => v.id === activeCenterId);
+  const editable = Boolean(activeView?.editable) && effectiveFrequency === "mensual";
   const showTotal = effectiveFrequency !== "anual";
 
   const onSort = useCallback((key: DatosSortKey) => {
@@ -123,17 +128,14 @@ export function DatosView() {
 
   return (
     <div className="px-7 py-5">
-      {uploadError && (
-        <NoticeBanner tone="error" onDismiss={clearUploadError}>
-          {uploadError}
-        </NoticeBanner>
+      {mode === "multi" && (
+        <CostCenterTabs views={views} activeId={activeCenterId} onSelect={setActiveCenter} />
       )}
 
-      {dataset && dataset.warnings.length > 0 && !warningsDismissed && (
+      {warnings.length > 0 && !warningsDismissed && (
         <NoticeBanner tone="warning" onDismiss={() => setWarningsDismissed(true)}>
-          El archivo tiene {dataset.warnings.length}{" "}
-          {dataset.warnings.length === 1 ? "descuadre" : "descuadres"} de sumatoria; se muestran los
-          valores recalculados.
+          El espacio de trabajo tiene {warnings.length} {warnings.length === 1 ? "aviso" : "avisos"}{" "}
+          de cuadre; se muestran los valores tal cual.
         </NoticeBanner>
       )}
 

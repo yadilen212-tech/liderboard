@@ -13,13 +13,11 @@ import {
 import {
   db,
   getWorkspaceMeta,
-  replaceDataset,
   replaceWorkspace,
   saveActiveCenter,
   saveCellEdit,
 } from "@/lib/profit-loss/db";
 import { allowedFrequencies, FREQUENCY_ORDER, mergeCenters } from "@/lib/profit-loss/derive";
-import { PygParseError } from "@/lib/profit-loss/errors";
 import {
   accountOptions,
   collapsedForLevel,
@@ -59,10 +57,6 @@ interface PygDataValue {
   commitWorkspace: (built: BuiltWorkspace) => Promise<void>;
   /** Workspace-level cuadre warnings (from meta). */
   warnings: string[];
-  uploadFile: (file: File) => Promise<void>;
-  isUploading: boolean;
-  uploadError: string | null;
-  clearUploadError: () => void;
   saveEdit: (
     code: string,
     monthIndex: number,
@@ -103,8 +97,6 @@ export function PygDataProvider({ children }: { children: ReactNode }) {
     views.length <= 1 && views[0]?.role === "single" ? "single" : "multi";
 
   const [frequency, setFrequencyState] = useState<Frequency>("mensual");
-  const [isUploading, setIsUploading] = useState(false);
-  const [uploadError, setUploadError] = useState<string | null>(null);
   const [selectedAccounts, setSelectedAccounts] = useState<Set<string>>(() => new Set());
   const [maxLevel, setMaxLevelState] = useState<number | null>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
@@ -208,37 +200,6 @@ export function PygDataProvider({ children }: { children: ReactNode }) {
     setActiveCenterId(built.meta.activeCenterId);
   }, []);
 
-  const uploadFile = useCallback(async (file: File) => {
-    setUploadError(null);
-    setIsUploading(true);
-    try {
-      // Dynamic import keeps SheetJS out of the initial bundle.
-      const { parsePygFile } = await import("@/lib/profit-loss/parse");
-      const { dataset, comments } = await parsePygFile(file);
-      const editCount = await db.edits.count();
-      if (
-        editCount > 0 &&
-        !window.confirm(
-          "Reemplazar los datos actuales descartará las ediciones y comentarios existentes. ¿Continuar?",
-        )
-      ) {
-        return;
-      }
-      // Comments stashed by a previous export are restored; value edits fold into the base.
-      await replaceDataset(dataset, comments);
-    } catch (error) {
-      setUploadError(
-        error instanceof PygParseError
-          ? error.message
-          : "No se pudo leer el archivo. Verifica que sea un Excel (.xls o .xlsx) válido.",
-      );
-    } finally {
-      setIsUploading(false);
-    }
-  }, []);
-
-  const clearUploadError = useCallback(() => setUploadError(null), []);
-
   const saveEdit = useCallback(
     async (code: string, monthIndex: number, value: number | null | undefined, comment: string) => {
       if (!dataset?.id || !activeView?.editable) {
@@ -268,10 +229,6 @@ export function PygDataProvider({ children }: { children: ReactNode }) {
       setActiveCenter,
       commitWorkspace,
       warnings: metaRow?.warnings ?? [],
-      uploadFile,
-      isUploading,
-      uploadError,
-      clearUploadError,
       saveEdit,
       deepestLevel: deepest,
       accountOptions: options,
@@ -296,10 +253,6 @@ export function PygDataProvider({ children }: { children: ReactNode }) {
       setActiveCenter,
       commitWorkspace,
       metaRow?.warnings,
-      uploadFile,
-      isUploading,
-      uploadError,
-      clearUploadError,
       saveEdit,
       deepest,
       options,
