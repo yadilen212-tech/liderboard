@@ -6,6 +6,9 @@
 
 export type Frequency = "mensual" | "trimestral" | "semestral" | "anual";
 
+/** How a dataset participates in a workspace. "single" = a standalone statement. */
+export type DatasetRole = "single" | "center" | "sin-centro";
+
 /** One account row exactly as parsed — original values, never mutated. */
 export interface AccountRow {
   code: string;
@@ -24,6 +27,14 @@ export interface PygDataset {
   year: number | null;
   /** Frequency the file provides; the UI can aggregate up, never down. */
   baseFrequency: Frequency;
+  /** Workspace role. "single" for a standalone statement (also the v1 migration default). */
+  role: DatasetRole;
+  /** Stable slug of the cost center (centers/sin-centro only); drives the selector id. */
+  centerId?: string;
+  /** Selector dot color (centers only). */
+  centerColor?: string;
+  /** Order within the selector (centers only). */
+  order?: number;
   /** Sucursal files carry "Centro de Costo: X"; kept as metadata only. */
   costCenterName?: string;
   /** Flat, in file order, parents included with their original values. */

@@ -64,6 +64,7 @@ export function parsePygWorkbook(data: ArrayBuffer, fileName: string): PygParseR
     periodLabel: meta.periodLabel,
     year: meta.year,
     baseFrequency: columns.baseFrequency,
+    role: "single",
     ...(meta.costCenterName ? { costCenterName: meta.costCenterName } : {}),
     accounts,
     resultFromFile,

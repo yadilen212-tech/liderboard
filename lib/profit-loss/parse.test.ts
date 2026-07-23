@@ -46,6 +46,7 @@ describe("parsePygWorkbook — monthly format", () => {
     expect(dataset.resultFromFile).toEqual(MONTHLY_RESULT);
     expect(dataset.warnings).toEqual([]);
     expect(dataset.id).toBeTruthy();
+    expect(dataset.role).toBe("single");
   });
 
   it("parses the sucursal variant (shifted header) and keeps the center name", () => {

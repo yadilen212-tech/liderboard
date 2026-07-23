@@ -12,6 +12,7 @@ function dataset(id: string): PygDataset {
     periodLabel: "Ene–Dic 2026",
     year: 2026,
     baseFrequency: "mensual",
+    role: "single",
     accounts: [{ code: "4", name: "Ingresos", values: [1] }],
     resultFromFile: [1],
     warnings: [],
