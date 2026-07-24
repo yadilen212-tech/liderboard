@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { ComingSoon } from "@/components/dashboard/coming-soon";
+import { AnalisisView } from "@/components/profit-loss/charts/analisis-view";
+import { GraficosView } from "@/components/profit-loss/charts/graficos-view";
 import { DatosToolbar } from "@/components/profit-loss/datos-toolbar";
 import { DatosView } from "@/components/profit-loss/datos-view";
 import { PygToolbar } from "@/components/profit-loss/pyg-toolbar";
@@ -66,6 +68,10 @@ export function ModuleTabs({ slug }: { slug: string }) {
       >
         {isPyg && activeTab.id === "datos" ? (
           <DatosView />
+        ) : isPyg && activeTab.id === "graficos" ? (
+          <GraficosView />
+        ) : isPyg && activeTab.id === "analisis" ? (
+          <AnalisisView />
         ) : (
           <ComingSoon mod={mod} tab={activeTab} />
         )}

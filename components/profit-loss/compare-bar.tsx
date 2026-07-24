@@ -1,16 +1,16 @@
 "use client";
 
-import { Layers2, Plus } from "lucide-react";
+import { Check, Layers2, Plus } from "lucide-react";
 import { useState } from "react";
 import { Dropdown, DropdownPanel, DropdownTrigger } from "@/components/ui/dropdown";
 import { EmptyState } from "@/components/ui/empty-state";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Toolbar, ToolbarLabel } from "@/components/ui/toolbar";
 import { cn } from "@/lib/cn";
+import type { CompareDimension, SelectionEntryOption } from "@/lib/profit-loss/charts/selection";
+import { usePygAnalytics } from "./pyg-analytics-provider";
 
-type Dim = "nada" | "cuentas" | "centros" | "periodos" | "niveles";
-
-const DIMS: { value: Dim; label: string }[] = [
+const DIMS: { value: CompareDimension; label: string }[] = [
   { value: "nada", label: "Nada" },
   { value: "cuentas", label: "Cuentas" },
   { value: "centros", label: "Centros" },
@@ -18,7 +18,7 @@ const DIMS: { value: Dim; label: string }[] = [
   { value: "niveles", label: "Niveles" },
 ];
 
-const CROSS: { value: Dim; label: string }[] = [
+const CROSS: { value: CompareDimension; label: string }[] = [
   { value: "nada", label: "Ninguno" },
   { value: "cuentas", label: "Cuentas" },
   { value: "centros", label: "Centros" },
@@ -26,17 +26,19 @@ const CROSS: { value: Dim; label: string }[] = [
   { value: "niveles", label: "Niveles" },
 ];
 
-const labelOf = (dim: Dim) => DIMS.find((option) => option.value === dim)?.label ?? "Nada";
+const labelOf = (dim: CompareDimension) =>
+  DIMS.find((option) => option.value === dim)?.label ?? "Nada";
 
 /**
- * "Comparar por" box shown under the filter row in Gráficos/Análisis. Picking a
- * dimension reveals the series controls; series values come from the Excel, so
- * they render an empty state for now.
+ * "Comparar por", now wired to `usePygAnalytics()`. Its shape has not changed: picking a
+ * dimension reveals the series controls, and the panel of the tab reads the SAME selection —
+ * the box and the charts cannot disagree because there is only one state.
  */
 export function CompareBar() {
-  const [dim, setDim] = useState<Dim>("nada");
-  const [cross, setCross] = useState<Dim>("nada");
-  const active = dim !== "nada";
+  const { selection, entryOptions, pickedIds, comparison, setDimension, setCross, toggleEntry } =
+    usePygAnalytics();
+  const active = selection.dimension !== "nada";
+  const picked = pickedIds.size;
 
   return (
     <Toolbar tone="sunken">
@@ -46,33 +48,38 @@ export function CompareBar() {
         className="bg-surface"
         ariaLabel="Comparar por dimensión"
         options={DIMS}
-        value={dim}
-        onChange={setDim}
+        value={selection.dimension}
+        onChange={setDimension}
       />
 
       {active && (
         <>
-          <AddSeries dimLabel={labelOf(dim)} />
+          <AddSeries
+            dimLabel={labelOf(selection.dimension)}
+            options={entryOptions}
+            picked={pickedIds}
+            onToggle={toggleEntry}
+          />
 
           <span className="h-[22px] w-px bg-chip-border" />
 
           <Dropdown>
-            <DropdownTrigger icon={<Layers2 size={14} />} active={cross !== "nada"}>
-              {cross === "nada" ? "Y también por" : labelOf(cross)}
+            <DropdownTrigger icon={<Layers2 size={14} />} active={selection.cross !== "nada"}>
+              {selection.cross === "nada" ? "Y también por" : labelOf(selection.cross)}
             </DropdownTrigger>
             <DropdownPanel width={224}>
               <div className="px-1.5 pb-1.5 text-[10.5px] font-semibold uppercase tracking-[0.5px] text-faintest">
                 Y también por (cruce)
               </div>
               <div className="-mx-1">
-                {CROSS.map((option) => (
+                {CROSS.filter((option) => option.value !== selection.dimension).map((option) => (
                   <button
                     key={option.value}
                     type="button"
                     onClick={() => setCross(option.value)}
                     className={cn(
                       "flex w-full items-center rounded-lg px-2 py-1.5 text-left text-[12.5px] transition-colors",
-                      cross === option.value
+                      selection.cross === option.value
                         ? "bg-brand-soft font-medium text-brand"
                         : "text-ink hover:bg-canvas",
                     )}
@@ -84,8 +91,19 @@ export function CompareBar() {
             </DropdownPanel>
           </Dropdown>
 
-          <span className="ml-auto text-[11.5px] font-medium text-faint">
-            Selecciona series para comparar
+          <span
+            className={cn(
+              "ml-auto text-[11.5px] font-medium",
+              // The engine truncates deterministically past eight; saying so beats letting the
+              // user believe the missing series do not exist.
+              comparison && comparison.truncated > 0 ? "text-warning" : "text-faint",
+            )}
+          >
+            {comparison && comparison.truncated > 0
+              ? `Se muestran 8 series; ${comparison.truncated} quedaron fuera.`
+              : picked === 0
+                ? "Selecciona series para comparar"
+                : `${picked} ${picked === 1 ? "serie seleccionada" : "series seleccionadas"}`}
           </span>
         </>
       )}
@@ -93,8 +111,18 @@ export function CompareBar() {
   );
 }
 
-/** Dashed "Agregar" pill that opens a series picker; empty until Excel data loads. */
-function AddSeries({ dimLabel }: { dimLabel: string }) {
+/** Dashed "Agregar" pill; its list is the real accounts, centers, levels or periods. */
+function AddSeries({
+  dimLabel,
+  options,
+  picked,
+  onToggle,
+}: {
+  dimLabel: string;
+  options: SelectionEntryOption[];
+  picked: ReadonlySet<string>;
+  onToggle: (id: string) => void;
+}) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -123,9 +151,41 @@ function AddSeries({ dimLabel }: { dimLabel: string }) {
             <div className="px-1.5 pb-1 text-[10.5px] font-semibold uppercase tracking-[0.5px] text-faintest">
               Series · {dimLabel}
             </div>
-            <EmptyState className="py-4">
-              Sin series disponibles. Se cargan desde el Excel de Pérdidas y Ganancias.
-            </EmptyState>
+            {options.length === 0 ? (
+              <EmptyState className="py-4">
+                Sin series disponibles. Se cargan desde el Excel de Pérdidas y Ganancias.
+              </EmptyState>
+            ) : (
+              <div className="-mx-1 max-h-72 overflow-y-auto">
+                {options.map((option) => {
+                  const on = picked.has(option.id);
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      role="menuitemcheckbox"
+                      aria-checked={on}
+                      onClick={() => onToggle(option.id)}
+                      className={cn(
+                        "flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[12.5px] transition-colors",
+                        on ? "bg-brand-soft font-medium text-brand" : "text-ink hover:bg-canvas",
+                      )}
+                    >
+                      <Check
+                        size={13}
+                        className={cn("shrink-0", on ? "opacity-100" : "opacity-0")}
+                      />
+                      <span className="min-w-0 flex-1 truncate">{option.label}</span>
+                      {option.hint && (
+                        <span className="shrink-0 font-mono text-[10.5px] text-faint">
+                          {option.hint}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </>
       )}

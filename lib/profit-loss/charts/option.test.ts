@@ -1,0 +1,466 @@
+import { describe, expect, it } from "vitest";
+import {
+  CHART_INK,
+  CHART_LINES,
+  CHART_MARK,
+  CHART_PALETTE,
+  CHART_SIGN,
+} from "@/lib/charts/palette";
+import type { ChartOption, ChartParam, ChartPieDatum } from "@/lib/charts/types";
+import { CULTURA_MANOR_SOURCE, makeSeries } from "../analytics/fixtures";
+import { periodsForYear } from "../analytics/period";
+import { buildSeries } from "../analytics/series";
+import { toPieSlices, toPareto, type AmountEntry } from "../analytics/structure";
+import type { Series, SeriesKey } from "../analytics/types";
+import {
+  barOption,
+  comboOption,
+  entryTable,
+  horizontalBarOption,
+  hundredPercentOption,
+  hundredPercentSeries,
+  lineOption,
+  paretoOption,
+  pieOption,
+  seriesOptionFor,
+  seriesTable,
+  seriesTableFor,
+  signColorOf,
+  stackedOption,
+  variationBarOption,
+} from "./option";
+
+const PERIODS = periodsForYear(2026, "mensual");
+const CONTEXT = { colorOf: (key: SeriesKey) => slotFor(key.code), periods: PERIODS };
+const ENTRY_CONTEXT = { colorOf: (code: string) => slotFor(code) };
+
+/** A deterministic stand-in for `colorResolver`; the color rule itself is tested elsewhere. */
+function slotFor(id: string): string {
+  let hash = 0;
+  for (const char of id) {
+    hash += char.charCodeAt(0);
+  }
+  return CHART_PALETTE[hash % CHART_PALETTE.length];
+}
+
+function data(option: ChartOption, index = 0): unknown[] {
+  return option.series[index].data;
+}
+
+/** Runs the tooltip callback the way the renderer would, with one param per series. */
+function tooltipOf(option: ChartOption, params: Partial<ChartParam>[]): string {
+  const formatter = option.tooltip?.formatter;
+  const full = params.map((param, index) => ({
+    name: "Ene",
+    dataIndex: 0,
+    value: null,
+    seriesName: option.series[index]?.name,
+    marker: "•",
+    ...param,
+  })) as ChartParam[];
+  return formatter ? formatter(full) : "";
+}
+
+describe("los periodos sin cobertura no se dibujan", () => {
+  it("keeps a null as a null so no mark is drawn and no line interpolates it", () => {
+    const [series] = buildSeries([CULTURA_MANOR_SOURCE], {
+      codes: ["4.1.1.1.1.1"],
+      centerIds: ["cultura-manor"],
+      years: [2026],
+      frequency: "mensual",
+    }).series;
+
+    // The file reaches July; Aug–Dec must reach the renderer as null, never as 0.
+    expect(data(barOption([series], CONTEXT))).toEqual([
+      17338,
+      17338,
+      17338,
+      17338,
+      17338,
+      17338,
+      17338,
+      null,
+      null,
+      null,
+      null,
+      null,
+    ]);
+    expect(data(lineOption([series], CONTEXT))).toEqual(data(barOption([series], CONTEXT)));
+  });
+
+  it("draws a real zero as a zero", () => {
+    const [series] = buildSeries([CULTURA_MANOR_SOURCE], {
+      codes: ["4.1.1.3"],
+      centerIds: ["cultura-manor"],
+      years: [2026],
+      frequency: "mensual",
+    }).series;
+
+    // Ventas Eventos books nothing in February inside a covered stretch: a genuine 0.
+    expect(data(barOption([series], CONTEXT))[1]).toBe(0);
+    expect(data(barOption([series], CONTEXT))[7]).toBeNull();
+  });
+
+  it("prints no value on the direct label of an uncovered period", () => {
+    const series = makeSeries([1000, null]);
+    const label = barOption([series], CONTEXT).series[0].label;
+
+    expect(label?.formatter?.({ value: null, name: "Feb", dataIndex: 1 })).toBe("");
+    expect(label?.formatter?.({ value: 1000, name: "Ene", dataIndex: 0 })).toContain("1.000");
+  });
+});
+
+describe("tipos de gráfico soportados", () => {
+  it("takes the 100% stack denominator from the engine's container, not the visible series", () => {
+    // Three of a parent's children: their shares must fall short of 100 on purpose.
+    const children = [
+      makeSeries([200], { code: "4.1.1.2", container: [1000] }),
+      makeSeries([100], { code: "4.1.1.3", container: [1000] }),
+      makeSeries([50], { code: "4.1.1.5", container: [1000] }),
+    ];
+    const option = hundredPercentOption(children, { ...CONTEXT, periods: PERIODS.slice(0, 1) });
+    const january = option.series.map((series) => series.data[0] as number);
+
+    expect(january).toEqual([20, 10, 5]);
+    expect(january.reduce((sum, value) => sum + value, 0)).toBe(35);
+    expect(option.series.every((series) => series.stack === "total")).toBe(true);
+    expect(option.yAxis?.max).toBe(100);
+  });
+
+  it("leaves the negative account out of the pie and reports why", () => {
+    const entries: AmountEntry[] = [
+      { code: "4.1.1.1.1.1", label: "Ventas Habitaciones", value: 17338 },
+      { code: "4.1.1.2", label: "Ventas Restaurante", value: 6500 },
+      { code: "4.1.4", label: "Rebaja y/o Descuentos sobre Ventas", value: -507 },
+    ];
+    const result = toPieSlices(entries);
+    const option = pieOption(result, ENTRY_CONTEXT);
+    const slices = option.series[0].data as ChartPieDatum[];
+
+    expect(slices.map((slice) => slice.id)).not.toContain("4.1.4");
+    expect(result.excluded).toEqual([{ ...entries[2], reason: "negativo" }]);
+  });
+
+  it("makes a donut of the same slices when asked", () => {
+    const result = toPieSlices([{ code: "4.1.1.2", label: "Restaurante", value: 100 }]);
+
+    expect(pieOption(result, { ...ENTRY_CONTEXT, donut: true }).series[0].radius).toEqual([
+      "52%",
+      "78%",
+    ]);
+    expect(pieOption(result, ENTRY_CONTEXT).series[0].radius).toEqual(["0%", "74%"]);
+  });
+
+  it("orders horizontal bars from largest to smallest", () => {
+    const option = horizontalBarOption(
+      [
+        { code: "5.1.5.3", label: "Publicidad", value: 2411 },
+        { code: "5.1.5.12", label: "Arrendamiento", value: 8000 },
+        { code: "5.1.5.7", label: "Mantenimiento", value: 590 },
+      ],
+      ENTRY_CONTEXT,
+    );
+
+    expect(option.yAxis?.data).toEqual(["Arrendamiento", "Publicidad", "Mantenimiento"]);
+    expect(option.yAxis?.inverse).toBe(true);
+  });
+
+  it("labels each Pareto bar with its cumulative share instead of a second scale", () => {
+    const result = toPareto([
+      { code: "5.1.5.12", label: "Arrendamiento", value: 8000 },
+      { code: "5.1.5.3", label: "Publicidad", value: 1500 },
+      { code: "5.1.5.7", label: "Mantenimiento", value: 500 },
+    ]);
+    const option = paretoOption(result, ENTRY_CONTEXT);
+    const label = option.series[0].label;
+
+    expect(option.series).toHaveLength(1);
+    expect(label?.show).toBe(true);
+    expect(label?.formatter?.({ value: 8000, name: "Arrendamiento", dataIndex: 0 })).toContain(
+      "80,0 %",
+    );
+    expect(option.series[0].markLine?.data[0].yAxis).toBe(0.5);
+  });
+});
+
+describe("un solo eje por gráfica", () => {
+  const series = makeSeries([1000, 1200, 900]);
+
+  it("never declares two Y scales, whatever the builder", () => {
+    const built: ChartOption[] = [
+      barOption([series], CONTEXT),
+      stackedOption([series], CONTEXT),
+      hundredPercentOption([makeSeries([200], { container: [1000] })], CONTEXT),
+      lineOption([series], CONTEXT),
+      comboOption(series, makeSeries([1000, 1050, 1030]), "Media móvil (3)", CONTEXT),
+      horizontalBarOption([{ code: "5.1", label: "Gastos", value: 10 }], ENTRY_CONTEXT),
+      paretoOption(toPareto([{ code: "5.1", label: "Gastos", value: 10 }]), ENTRY_CONTEXT),
+    ];
+
+    for (const option of built) {
+      expect(Array.isArray(option.yAxis)).toBe(false);
+      expect(Array.isArray(option.xAxis)).toBe(false);
+    }
+  });
+
+  it("shares the axis between the bars and the line of a combo", () => {
+    const option = comboOption(series, makeSeries([1000, 1050, 1030]), "Media móvil (3)", CONTEXT);
+
+    expect(option.series.map((entry) => entry.type)).toEqual(["bar", "line"]);
+    expect(option.yAxis?.type).toBe("value");
+    // Neither series names an axis of its own: there is only one to name.
+    expect(option.series.every((entry) => !("yAxisIndex" in entry))).toBe(true);
+  });
+
+  it("paints the combo overlay in ink, not in a palette slot", () => {
+    const option = comboOption(series, makeSeries([1000]), "Media móvil (3)", CONTEXT);
+
+    expect(option.series[1].lineStyle?.color).toBe(CHART_INK.strong);
+    expect(CHART_PALETTE).not.toContain(option.series[1].lineStyle?.color);
+  });
+});
+
+describe("marcas, leyenda y etiquetas", () => {
+  function manySeries(count: number): Series[] {
+    return Array.from({ length: count }, (_, index) =>
+      makeSeries([100 + index], { code: `4.1.1.${index}`, label: `Cuenta ${index}` }),
+    );
+  }
+
+  it("draws no legend box for a single series", () => {
+    expect(barOption(manySeries(1), CONTEXT).legend?.show).toBe(false);
+    expect(barOption(manySeries(2), CONTEXT).legend?.show).toBe(true);
+  });
+
+  it("gives eight series a legend and no number per point", () => {
+    const option = barOption(manySeries(8), CONTEXT);
+
+    expect(option.legend?.show).toBe(true);
+    expect(option.series.every((series) => series.label?.show === false)).toBe(true);
+  });
+
+  it("keeps direct labels up to four series", () => {
+    expect(barOption(manySeries(4), CONTEXT).series.every((s) => s.label?.show)).toBe(true);
+    expect(barOption(manySeries(5), CONTEXT).series.every((s) => s.label?.show === false)).toBe(
+      true,
+    );
+  });
+
+  it("drops a label that does not fit instead of clipping it", () => {
+    const option = stackedOption(manySeries(3), CONTEXT);
+
+    expect(option.series.every((series) => series.labelLayout?.hideOverlap)).toBe(true);
+  });
+
+  it("keeps the grid continuous and recessive, never dotted", () => {
+    const option = barOption(manySeries(2), CONTEXT);
+
+    expect(option.yAxis?.splitLine?.lineStyle).toMatchObject({
+      type: "solid",
+      color: CHART_LINES.grid,
+    });
+    expect(option.xAxis?.splitLine?.show).toBe(false);
+    expect(option.xAxis?.axisLine?.lineStyle?.type).toBe("solid");
+  });
+
+  it("separates contiguous fills with 2px of the surface, and leaves one series alone", () => {
+    expect(barOption(manySeries(3), CONTEXT).series[0].itemStyle?.borderWidth).toBe(CHART_MARK.gap);
+    expect(stackedOption(manySeries(2), CONTEXT).series[0].itemStyle?.borderWidth).toBe(
+      CHART_MARK.gap,
+    );
+    expect(barOption(manySeries(1), CONTEXT).series[0].itemStyle?.borderWidth).toBeUndefined();
+  });
+
+  it("writes every text in ink and never in the color of its series", () => {
+    const option = barOption(manySeries(2), CONTEXT);
+    const inks: string[] = [...Object.values(CHART_INK)];
+
+    for (const series of option.series) {
+      expect(inks).toContain(series.label?.color);
+      expect(CHART_PALETTE).not.toContain(series.label?.color);
+      expect(series.label?.color).not.toBe(series.itemStyle?.color);
+    }
+    expect(inks).toContain(option.xAxis?.axisLabel?.color);
+    expect(inks).toContain(option.yAxis?.axisLabel?.color);
+    expect(inks).toContain(option.legend?.textStyle?.color);
+  });
+
+  it("formats the axis with formatCurrency and the periods with periodLabel", () => {
+    const option = barOption(manySeries(1), CONTEXT);
+
+    expect(option.yAxis?.axisLabel?.formatter?.(17338)).toBe("$17.338");
+    expect(option.xAxis?.data?.slice(0, 3)).toEqual(["Ene", "Feb", "Mar"]);
+  });
+
+  it("labels a percentage axis as a percentage and an index as a plain number", () => {
+    const share = hundredPercentOption([makeSeries([20], { container: [100] })], CONTEXT);
+    const index = lineOption([makeSeries([120])], { ...CONTEXT, unit: "indice" });
+
+    expect(share.yAxis?.axisLabel?.formatter?.(20)).toBe("20,0 %");
+    expect(index.yAxis?.axisLabel?.formatter?.(120)).toBe("120");
+  });
+});
+
+describe("el signo de una variación", () => {
+  const entries: AmountEntry[] = [
+    { code: "5.1.5.3", label: "Publicidad", value: 1200 },
+    { code: "5.1.5.7", label: "Mantenimiento", value: -450 },
+  ];
+
+  it("uses the sign tokens as the fill, and never as a series color", () => {
+    const bars = variationBarOption(entries).series[0].data as { itemStyle: { color: string } }[];
+
+    expect(bars[0].itemStyle.color).toBe(CHART_SIGN.positive);
+    expect(bars[1].itemStyle.color).toBe(CHART_SIGN.negative);
+    expect(CHART_PALETTE).not.toContain(CHART_SIGN.positive);
+    expect(CHART_PALETTE).not.toContain(CHART_SIGN.negative);
+  });
+
+  it("carries an arrow and the signed value, so color is not the only cue", () => {
+    const label = variationBarOption(entries).series[0].label;
+
+    expect(label?.formatter?.({ value: 1200, name: "Publicidad", dataIndex: 0 })).toBe("▲ $1.200");
+    expect(label?.formatter?.({ value: -450, name: "Mantenimiento", dataIndex: 1 })).toBe(
+      "▼ -$450",
+    );
+  });
+
+  it("colors the table twin by the same sign as its bars", () => {
+    const color = signColorOf(entries);
+
+    expect(color("5.1.5.3")).toBe(CHART_SIGN.positive);
+    expect(color("5.1.5.7")).toBe(CHART_SIGN.negative);
+  });
+});
+
+describe("la forma que la transformación admite", () => {
+  const series = [
+    makeSeries([200, 300], { code: "4.1.1.2", container: [1000, 1000] }),
+    makeSeries([100, 150], { code: "4.1.1.3", container: [1000, 1000] }),
+  ];
+  const context = { ...CONTEXT, periods: PERIODS.slice(0, 2) };
+
+  it("routes each chart type to its builder", () => {
+    expect(seriesOptionFor("barras", series, context).series[0].stack).toBeUndefined();
+    expect(seriesOptionFor("barras-apiladas", series, context).series[0].stack).toBe("total");
+    expect(seriesOptionFor("linea", series, context).series[0].type).toBe("line");
+    expect(seriesOptionFor("barras-100", series, context).yAxis?.max).toBe(100);
+  });
+
+  it("makes the table twin of a 100% stack show shares, not amounts", () => {
+    expect(seriesTableFor("barras-100", series, context).rows[0].values).toEqual([
+      "20,0 %",
+      "30,0 %",
+    ]);
+    expect(seriesTableFor("barras", series, context).rows[0].values).toEqual(["$200", "$300"]);
+  });
+});
+
+describe("la gemela en tabla", () => {
+  it("puts one row per series and one column per period", () => {
+    const series = [
+      makeSeries([1000, 1200], { code: "4.1.1.2", label: "Ventas Restaurante" }),
+      makeSeries([500, 600], { code: "4.1.1.3", label: "Ventas Eventos" }),
+    ];
+    const table = seriesTable(series, { ...CONTEXT, periods: PERIODS.slice(0, 2) });
+
+    expect(table.columns).toEqual(["Ene", "Feb"]);
+    expect(table.rows.map((row) => row.label)).toEqual(["Ventas Restaurante", "Ventas Eventos"]);
+    expect(table.rows[0].values).toEqual(["$1.000", "$1.200"]);
+    expect(table.rows[0].id).toBe("4.1.1.2|cultura-manor|2026");
+  });
+
+  it("leaves an uncovered period empty instead of showing a zero", () => {
+    const table = seriesTable([makeSeries([1000, null])], {
+      ...CONTEXT,
+      periods: PERIODS.slice(0, 2),
+    });
+
+    expect(table.rows[0].values).toEqual(["$1.000", null]);
+  });
+
+  it("shows the transformation, not the amounts behind it", () => {
+    const children = [makeSeries([200], { code: "4.1.1.2", container: [1000] })];
+    const shares = hundredPercentSeries(children);
+    const table = seriesTable(shares, {
+      ...CONTEXT,
+      periods: PERIODS.slice(0, 1),
+      unit: "porcentaje",
+    });
+
+    expect(table.rows[0].values).toEqual(["20,0 %"]);
+  });
+
+  it("ranks the entries of an entry-based card largest first", () => {
+    const table = entryTable(
+      [
+        { code: "5.1.5.3", label: "Publicidad", value: 2411 },
+        { code: "5.1.5.12", label: "Arrendamiento", value: 8000 },
+      ],
+      ENTRY_CONTEXT,
+    );
+
+    expect(table.columns).toEqual(["Monto"]);
+    expect(table.rows.map((row) => row.label)).toEqual(["Arrendamiento", "Publicidad"]);
+  });
+});
+
+describe("interacción de la gráfica", () => {
+  const series = [
+    makeSeries([1000, null], { code: "4.1.1.2", label: "Ventas Restaurante" }),
+    makeSeries([500, null], { code: "4.1.1.3", label: "Ventas Eventos" }),
+  ];
+
+  it("names the series, the period and the formatted amount", () => {
+    const option = barOption(series, CONTEXT);
+    const html = tooltipOf(option, [{ value: 1000 }, { value: 500 }]);
+
+    expect(html).toContain("Ene");
+    expect(html).toContain("Ventas Restaurante");
+    expect(html).toContain("$1.000");
+    expect(html).toContain("$500");
+  });
+
+  it("omits an uncovered series rather than reporting it as $0", () => {
+    const option = barOption(series, CONTEXT);
+    const html = tooltipOf(option, [
+      { value: 1000, name: "Ago" },
+      { value: null, name: "Ago" },
+    ]);
+
+    expect(html).toContain("Ventas Restaurante");
+    expect(html).not.toContain("Ventas Eventos");
+    expect(html).not.toContain("$0");
+  });
+
+  it("renders nothing when no series covered the period", () => {
+    const option = barOption(series, CONTEXT);
+
+    expect(tooltipOf(option, [{ value: null }, { value: null }])).toBe("");
+  });
+
+  it("uses a crosshair on lines and a column shadow on bars", () => {
+    expect(barOption(series, CONTEXT).tooltip?.axisPointer?.type).toBe("shadow");
+    expect(lineOption(series, CONTEXT).tooltip?.axisPointer?.type).toBe("cross");
+  });
+
+  it("gives the pie an item tooltip with its share", () => {
+    const result = toPieSlices([
+      { code: "4.1.1.2", label: "Restaurante", value: 750 },
+      { code: "4.1.1.3", label: "Eventos", value: 250 },
+    ]);
+    const option = pieOption(result, ENTRY_CONTEXT);
+    const html = option.tooltip?.formatter?.({
+      name: "Restaurante",
+      value: 750,
+      percent: 75,
+      dataIndex: 0,
+      marker: "•",
+    });
+
+    expect(option.tooltip?.trigger).toBe("item");
+    expect(html).toContain("Restaurante");
+    expect(html).toContain("$750");
+    expect(html).toContain("75,0 %");
+  });
+});

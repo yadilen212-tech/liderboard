@@ -31,6 +31,7 @@ import {
 } from "@/lib/profit-loss/filter";
 import type { CellEdit, Frequency, PygDataset } from "@/lib/profit-loss/types";
 import type { BuiltWorkspace } from "@/lib/profit-loss/workspace";
+import { PygAnalyticsProvider } from "./pyg-analytics-provider";
 
 const EMPTY_EDITS: CellEdit[] = [];
 const EMPTY_DATASETS: PygDataset[] = [];
@@ -272,7 +273,13 @@ export function PygDataProvider({ children }: { children: ReactNode }) {
     ],
   );
 
-  return <PygDataContext.Provider value={value}>{children}</PygDataContext.Provider>;
+  // The analytics selection lives in its own file but inside this tree, so the layout keeps a
+  // single mount point and `CompareBar` and the content panel still read one state.
+  return (
+    <PygDataContext.Provider value={value}>
+      <PygAnalyticsProvider allEdits={allEdits}>{children}</PygAnalyticsProvider>
+    </PygDataContext.Provider>
+  );
 }
 
 export function usePygData(): PygDataValue {
