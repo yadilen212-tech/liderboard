@@ -12,19 +12,19 @@ Desktop only — no responsive/mobile layer.
 
 Package manager is **pnpm** (pinned via `packageManager`). Node LTS.
 
-| Task                                 | Command                               |
-| ------------------------------------ | ------------------------------------- |
-| Dev server (Turbopack, :3000)        | `pnpm dev`                            |
-| Production build (also type-checks)  | `pnpm build`                          |
-| Serve production build               | `pnpm start`                          |
-| Lint                                 | `pnpm lint` (or `pnpm exec oxlint .`) |
-| Lint + autofix                       | `pnpm lint:fix`                       |
-| Format                               | `pnpm fmt`                            |
-| Format check (CI gate)               | `pnpm fmt:check`                      |
-| Tests (Vitest, only lib/profit-loss) | `pnpm test`                           |
+| Task                                | Command                               |
+| ----------------------------------- | ------------------------------------- |
+| Dev server (Turbopack, :3000)       | `pnpm dev`                            |
+| Production build (also type-checks) | `pnpm build`                          |
+| Serve production build              | `pnpm start`                          |
+| Lint                                | `pnpm lint` (or `pnpm exec oxlint .`) |
+| Lint + autofix                      | `pnpm lint:fix`                       |
+| Format                              | `pnpm fmt`                            |
+| Format check (CI gate)              | `pnpm fmt:check`                      |
+| Tests (Vitest, pure layer only)     | `pnpm test`                           |
 
 **Vitest** is configured but runs ONLY the pure layer (`lib/**/*.test.ts`, e.g.
-`lib/profit-loss/`); there are no component/jsdom tests.
+`lib/profit-loss/`, `lib/charts/`); there are no component/jsdom tests.
 
 CI (`.github/workflows/ci.yml`) runs four independent jobs on PRs and pushes to
 `main`: `pnpm lint`, `pnpm fmt:check`, `pnpm build`, `pnpm test`. A husky pre-commit
@@ -40,10 +40,16 @@ hook runs `lint-staged` (oxlint --fix + oxfmt on staged files).
   (use `mod`).
 - **Tailwind CSS v4, CSS-first.** There is no `tailwind.config.js`. Theme lives in
   `app/globals.css` via `@import "tailwindcss"` + an `@theme { … }` block.
+- **ECharts measures text on a canvas**, where a CSS variable cannot resolve — so a font stack
+  written as `var(--font-ibm-plex-sans)` is silently measured against a narrower fallback and
+  every width-capped axis label truncates to a box that renders wider than its own cap (labels
+  clipped at the _start_). `components/ui/chart.tsx` reads the generated family off `:root` and
+  substitutes it before `setOption`; keep any new text sizing on that path.
 - TypeScript is `strict`; import alias `@/*` maps to the repo root (e.g.
   `@/lib/modules`).
-- Vitest covers only `lib/profit-loss/` (the pure parse/derive/persistence layer) — no
-  jsdom/component tests; config in `vitest.config.ts`.
+- Vitest covers only the pure layer under `lib/` (parse/derive/persistence, the analytics
+  engine, the palette and the chart-option builders) — no jsdom/component tests; config in
+  `vitest.config.ts`.
 
 ## Code conventions
 
@@ -110,6 +116,22 @@ the monthly centers, read-only), each editable center, and an annual read-only *
 de costo** (from the consolidado). `parse.ts` now routes consolidated files via
 `parseWorkbook`/`parseConsolidatedWorkbook` instead of rejecting them; the multi-center
 download writes one sheet per center + the Consolidado (`buildMultiCenterWorkbook`).
+
+**Charts.** `lib/profit-loss/analytics/` is the pure engine (series with coverage, the
+temporal/structure/variation transforms). Everything above it is also pure and tested:
+`lib/charts/` holds the eight-slot palette + mark constants (`colorForEntity` is the only way a
+series gets a color) and the `ChartOption` types this app writes — declared locally so `lib/`
+never imports the renderer; `lib/profit-loss/charts/` holds `sources.ts` (workspace views →
+`AnalyticsSource`, identity taken from the VIEW), `selection.ts` (selection → `SeriesQuery`,
+plus sanitize), `option.ts` (one builder per chart type, `Series[]` → option) and `presets.ts`
+(the default views, built through the same `toSeriesQuery` as Comparar). Components are mount
+only: `components/ui/chart.tsx` is the sole `echarts.init` caller (partial imports from
+`echarts/core`, SVG renderer), `PygAnalyticsProvider` (nested inside `PygDataProvider`) holds
+the in-memory selection behind `usePygAnalytics()`, and `components/profit-loss/charts/` renders
+the cards. **If a chart component grows logic worth testing, that logic belongs in `lib/`.**
+Two invariants are load-bearing: no chart declares two `yAxis` (the `ChartOption` type forbids
+it), and the palette never cycles — queries cap at `CHART_MAX_SERIES` (8) and the engine reports
+what it truncated.
 
 **Design tokens.** Colors and fonts are defined once in `app/globals.css`'s
 `@theme` block (`brand`, `brand-soft`, `canvas`, `surface`, `border`, `ink`,

@@ -251,6 +251,36 @@ describe("saneamiento de la selección", () => {
   });
 });
 
+describe("tope de series de una gráfica", () => {
+  it("draws everything and warns about nothing when the selection fits", () => {
+    const codes = [...MANOR.valuesByCode.keys()].slice(0, 6);
+    const bundle = buildSeries(
+      SOURCES,
+      toSeriesQuery(makeSelection({ dimension: "cuentas", codes }), makeContext()),
+    );
+
+    expect(bundle.series).toHaveLength(6);
+    expect(bundle.truncated).toBe(0);
+    expect(bundle.warnings).toEqual([]);
+  });
+
+  it("draws eight and says in Spanish how many it dropped when the selection is wider", () => {
+    // 4 accounts × 4 centers would be 16 series; the palette has eight slots.
+    const codes = [...MANOR.valuesByCode.keys()].slice(0, 4);
+    const selection = makeSelection({
+      dimension: "cuentas",
+      codes,
+      cross: "centros",
+      centerIds: ["consolidado", "cultura-manor", "centro-de-costo-principal"],
+    });
+    const bundle = buildSeries(SOURCES, toSeriesQuery(selection, makeContext()));
+
+    expect(bundle.series).toHaveLength(CHART_MAX_SERIES);
+    expect(bundle.truncated).toBe(4);
+    expect(bundle.warnings[0]).toContain("se descartaron 4");
+  });
+});
+
 describe("el selector se llena con datos reales", () => {
   it("lists the accounts of the active center for the cuentas dimension", () => {
     const options = entryOptionsFor("cuentas", makeContext());
@@ -383,6 +413,23 @@ describe("resolución de color", () => {
     );
     expect(color({ code: RESTAURANTE, centerId: "cultura-manor", year: 2026 })).toBe(
       CHART_PALETTE[1],
+    );
+  });
+
+  it("keeps a center on the same color across two cards of the same tab", () => {
+    // Two cards, two different selections; the center's slot comes from the selector either way.
+    const evolution = makeSelection({
+      dimension: "centros",
+      centerIds: ["cultura-manor", "centro-de-costo-principal"],
+    });
+    const composition = makeSelection({
+      dimension: "centros",
+      centerIds: ["centro-de-costo-principal"],
+    });
+    const key = { code: HABITACIONES, centerId: "centro-de-costo-principal", year: 2026 };
+
+    expect(colorResolver(composition, makeContext())(key)).toBe(
+      colorResolver(evolution, makeContext())(key),
     );
   });
 

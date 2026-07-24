@@ -9,6 +9,8 @@ el código (identificadores, slugs de rutas) en **inglés**. Es una app **solo p
 - [Next.js](https://nextjs.org) 16 — App Router, Server Components por defecto.
 - Tailwind CSS v4 (CSS-first; el tema vive en `app/globals.css`, no hay `tailwind.config.js`).
 - [oxc](https://oxc.rs) para lint y formato (`oxlint` / `oxfmt`) — no ESLint/Prettier.
+- [Apache ECharts](https://echarts.apache.org) 6 para las gráficas, con _imports parciales_
+  desde `echarts/core` y renderer SVG.
 - Fuentes IBM Plex Sans/Mono vía `next/font`; iconos de `lucide-react`.
 - Gestor de paquetes: **pnpm**.
 
@@ -21,19 +23,19 @@ pnpm dev            # servidor de desarrollo en http://localhost:3000
 
 ## Scripts
 
-| Tarea                                | Comando          |
-| ------------------------------------ | ---------------- |
-| Servidor de desarrollo (:3000)       | `pnpm dev`       |
-| Build de producción (type-check)     | `pnpm build`     |
-| Servir el build                      | `pnpm start`     |
-| Lint                                 | `pnpm lint`      |
-| Lint + autofix                       | `pnpm lint:fix`  |
-| Formato                              | `pnpm fmt`       |
-| Verificar formato (CI)               | `pnpm fmt:check` |
-| Tests (Vitest, solo lib/profit-loss) | `pnpm test`      |
+| Tarea                             | Comando          |
+| --------------------------------- | ---------------- |
+| Servidor de desarrollo (:3000)    | `pnpm dev`       |
+| Build de producción (type-check)  | `pnpm build`     |
+| Servir el build                   | `pnpm start`     |
+| Lint                              | `pnpm lint`      |
+| Lint + autofix                    | `pnpm lint:fix`  |
+| Formato                           | `pnpm fmt`       |
+| Verificar formato (CI)            | `pnpm fmt:check` |
+| Tests (Vitest, solo la capa pura) | `pnpm test`      |
 
-Tests con **Vitest**, solo sobre la capa pura `lib/profit-loss/` (parse/derive/persistencia);
-no hay tests de componentes.
+Tests con **Vitest**, solo sobre la capa pura de `lib/` (parse/derive/persistencia, el motor
+analítico, la paleta y los constructores de opción de gráfica); no hay tests de componentes.
 
 ## Estructura
 
@@ -43,9 +45,13 @@ components/ui/           primitivas reutilizables (Button, Dropdown, SegmentedCo
                          Toolbar, EmptyState, FilterChip, Checkbox, Select, …)
 components/dashboard/    shell: sidebar, header, tabs de módulo
 components/profit-loss/  composiciones específicas de Pérdidas y Ganancias
+  └ charts/              tarjetas y vistas de Gráficos y Análisis
 lib/modules.ts           registro de módulos (única fuente de verdad de la navegación)
 lib/format.ts            helpers de formato de toda la app (moneda EC, número, porcentaje)
 lib/date.ts              etiquetas de calendario compartidas (meses en español)
+lib/charts/              paleta categórica y sistema de marcas, comunes a toda la app
+lib/profit-loss/analytics/  motor analítico puro (series, transformaciones, Pareto, pastel)
+lib/profit-loss/charts/  traducción pura: selección → consulta → opción de ECharts
 docs/superpowers/specs/  specs de diseño aprobados
 ```
 
@@ -59,17 +65,17 @@ formatear localmente.
 Los módulos y su navegación salen de `lib/modules.ts`. Cada módulo expone las vistas
 **Gráficos** y **Datos**; **Pérdidas y Ganancias** añade además **Análisis**.
 
-**Pérdidas y Ganancias (PyG)** ya tiene su capa de filtros (solo visual, salvo el selector de
-frecuencia, que sí controla los datos mostrados):
+**Pérdidas y Ganancias (PyG)** tiene su capa de filtros conectada a los datos:
 
 - El **nombre del cliente activo** se muestra en el header del módulo (`ActiveClient`),
   con estado vacío mientras no se carga un Excel.
 - **Sección de filtros** bajo las tabs: cuenta contable, **nivel** (único control de
   profundidad del árbol: expande/colapsa hasta el nivel elegido, o "Todos los niveles"; el
   máximo es el nivel más profundo de **todos** los archivos del workspace), centro de costos,
-  granularidad (Ver por) y período. La lista de cuentas y los centros de costo se leen del
-  Excel que se sube, por lo que hoy muestran un **estado vacío** listo para poblarse.
-- **Recuadro "Comparar por"** en Gráficos y Análisis (colapsable, cerrado por defecto).
+  granularidad (Ver por) y período. La lista de cuentas y los centros salen del Excel cargado;
+  el estado vacío solo aparece cuando no hay datos.
+- **Recuadro "Comparar por"** en Gráficos y Análisis (colapsable, cerrado por defecto), ya
+  conectado al motor analítico (ver "Gráficos y Análisis" más abajo).
 - Leyenda de **semáforo** en la fila de tabs.
 - **Barra de acciones de Datos** (`DatosToolbar`, solo en la tab Datos, bajo la fila de
   filtros): barra **fija** de una fila con el selector de **Centro de costos** a la izquierda
@@ -100,7 +106,59 @@ frecuencia, que sí controla los datos mostrados):
 
 Los importes usan el **formato de moneda de Ecuador** (`$`) vía `lib/format.ts`.
 
-El contenido de Gráficos y Análisis aún está en construcción.
+## Gráficos y Análisis (PyG)
+
+Ambas pestañas consumen el **motor analítico** (`lib/profit-loss/analytics/`) a través de una
+capa de traducción pura y testeada; ya no muestran "próximamente".
+
+- **Reparto.** _Gráficos_ responde **cuánto y de qué** (montos por periodo, comparación entre
+  cuentas y centros, composición de un total). _Análisis_ responde **cómo cambia**: las
+  transformaciones del motor — acumulado YTD, índice base 100, media móvil, mismo periodo del
+  año anterior, % sobre ingresos, % sobre la cuenta padre, variación y concentración de gastos.
+- **Vista por defecto.** Con un Excel cargado ambas pestañas muestran algo útil **antes de
+  configurar nada**: _Gráficos_ trae los totales del periodo como **stat tiles** (Ingresos,
+  Costos y Gastos, Utilidad o Pérdida — un total es un número, no una gráfica de una barra), la
+  evolución de Ingresos contra Costos y Gastos, la composición de los ingresos y el ranking de
+  gastos; _Análisis_ trae el % sobre ingresos de los gastos principales, la variación contra el
+  periodo anterior y el Pareto. Los presets son **consultas normales al motor**, la misma ruta
+  que usa "Comparar" — no un camino aparte.
+- **"Comparar por" conectada.** Sus cuatro dimensiones (`cuentas`, `centros`, `periodos`,
+  `niveles`) se traducen a los ejes de `SeriesQuery`, con un cruce opcional ("Y también por")
+  que agrega el segundo eje del producto cartesiano. El selector "Agregar" lista las cuentas
+  del centro activo o los centros reales del workspace. Elegir una dimensión reemplaza la
+  tarjeta de comparación y **conserva los stat tiles**; volver a «Nada» restaura el preset.
+- **Estado compartido.** `PygAnalyticsProvider` (montado dentro de `PygDataProvider`, así que
+  el layout no cambia) expone `usePygAnalytics()`: la barra de herramientas y el panel leen
+  **una sola selección**. Vive **en memoria** — sobrevive al cambio entre Gráficos y Análisis,
+  no al recargar — y se **sanea** al cambiar de workspace, de centro activo o de frecuencia:
+  lo que dejó de existir se descarta y la pestaña vuelve a su vista por defecto.
+
+**Reglas que las gráficas no rompen** (cada una con su test en la capa pura):
+
+- **Ninguna gráfica lleva doble eje Y.** El combo de barras + línea comparte un solo eje y una
+  sola unidad (monto con su media móvil, o con el mismo periodo del año anterior); lo que cambia
+  de unidad va en su propia tarjeta. Por eso el **Pareto** se dibuja como barras horizontales
+  ordenadas con el acumulado **como etiqueta**, y no con una segunda escala de porcentaje.
+- **Los periodos sin cobertura no se dibujan.** Un `null` no produce marca ni se interpola (los
+  archivos que llegan hasta julio no inventan un desplome en agosto); un **`0` real sí se
+  dibuja**, y el tooltip omite la serie sin cobertura en vez de reportar `$0`.
+- **El color sigue a la entidad, nunca a su posición.** La ranura sale del orden del centro en
+  el selector (o de la cuenta en la consulta), así que quitar una serie no repinta las demás y
+  un centro conserva su color entre tarjetas. La paleta tiene **ocho ranuras** validadas bajo
+  daltonismo y **no se ciclan**: la consulta topa en 8 series y el motor avisa cuántas descartó.
+  Verde y rojo quedan **reservados** para el signo de una variación, y siempre con flecha y
+  valor con signo — nunca color solo.
+- **Cada tarjeta tiene su gemela en tabla** ("Ver como tabla"): las mismas series como filas y
+  los periodos como columnas, con los valores **ya transformados** (índice 100, variación, YTD)
+  y el periodo sin cobertura en blanco. Las advertencias del motor salen **completas** antes de
+  la gráfica, y una consulta sin series explica por qué en vez de dibujar un plot vacío.
+
+**Renderizado.** `components/ui/chart.tsx` es el **único** que llama a `echarts.init`: monta la
+instancia, aplica cada cambio de opción **sobre la instancia viva** (sin remontar, sin
+parpadeo), la redimensiona con `ResizeObserver` (el sidebar colapsa sin disparar `resize` de
+ventana) y la destruye al desmontar. Solo se registran `BarChart`, `LineChart`, `PieChart` y
+los componentes de rejilla, tooltip, leyenda, etiquetas y línea de referencia; el paquete
+completo ronda el megabyte y el chunk de `/profit-loss` entero pesa menos que eso.
 
 ## Carga de Excel (PyG › Datos)
 
