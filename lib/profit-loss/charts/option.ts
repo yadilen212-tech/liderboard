@@ -16,6 +16,7 @@ import {
   CHART_INK,
   CHART_LINES,
   CHART_MARK,
+  CHART_PALETTE,
   CHART_SIGN,
   CHART_SURFACE,
 } from "@/lib/charts/palette";
@@ -38,6 +39,7 @@ import {
 } from "../analytics/structure";
 import { seriesKeyId, type PeriodRef, type Series, type SeriesKey } from "../analytics/types";
 import type { ChartType } from "./selection";
+import { RESULT_CODE, type WaterfallStep } from "./waterfall";
 
 /** What the Y values mean, which is all that changes between amounts, shares and indexes. */
 export type ChartUnit = "moneda" | "porcentaje" | "indice";
@@ -407,6 +409,215 @@ export function paretoOption(result: ParetoResult, context: EntryOptionContext):
       },
     ],
   };
+}
+
+/* -------------------------------------------------------------------- cascada */
+
+/** The four stacked series: two transparent bases and the two visible halves of a step. */
+const WATERFALL_SERIES = {
+  basePositive: "cascada-base-positivo",
+  positive: "cascada-positivo",
+  baseNegative: "cascada-base-negativo",
+  negative: "cascada-negativo",
+} as const;
+
+const WATERFALL_STACK = "cascada";
+
+/** Headroom before the axis is rounded, so the tallest bar does not touch the plot edge. */
+const AXIS_PADDING = 1.02;
+
+type WaterfallSide = "positivo" | "negativo";
+
+/**
+ * The cascade: bars and nothing but bars, all in one stack, with the stretch below each step
+ * painted transparent. That is the whole recipe — `BarChart` is already registered and no new
+ * chart type enters the bundle.
+ *
+ * **Why four series and not two.** A stack accumulates each sign on its own side, so a segment
+ * that crosses zero — the expense that turns a profit into a loss — cannot be a single bar. It
+ * is drawn as the part above the axis plus the part below, each one stacked on its own base.
+ * For every other step one of the two halves is `null` and nothing is drawn.
+ *
+ * Colors mark a ROLE here (opening total, what left, how it closed), never an entity, which is
+ * why slot 1 and the sign tokens are read directly instead of through `colorForEntity`: a
+ * cascade consumes no categorical slot and cannot collide with the color of a series.
+ */
+export function waterfallOption(steps: WaterfallStep[]): ChartOption {
+  const pieces = steps.map(piecesOf);
+  const { min, max } = waterfallExtent(steps);
+
+  const base = (side: WaterfallSide): ChartSeries => ({
+    id: side === "positivo" ? WATERFALL_SERIES.basePositive : WATERFALL_SERIES.baseNegative,
+    type: "bar",
+    stack: WATERFALL_STACK,
+    data: pieces.map((piece) => (side === "positivo" ? piece.basePositive : piece.baseNegative)),
+    itemStyle: { color: "transparent" },
+    barMaxWidth: CHART_MARK.barMaxWidth,
+    // Not in the legend, not in the tooltip, not labelled: it is the hole a step floats over.
+    label: { show: false },
+    silent: true,
+  });
+
+  const fill = (side: WaterfallSide): ChartSeries => ({
+    id: side === "positivo" ? WATERFALL_SERIES.positive : WATERFALL_SERIES.negative,
+    type: "bar",
+    stack: WATERFALL_STACK,
+    data: pieces.map((piece, index) => ({
+      value: side === "positivo" ? piece.positive : piece.negative,
+      itemStyle: { color: waterfallColor(steps[index]) },
+    })),
+    barMaxWidth: CHART_MARK.barMaxWidth,
+    label: {
+      show: true,
+      // On the bar, as the design asks: eight or nine steps have room, and the amount is what
+      // saves the reader from measuring against the axis.
+      position: "inside",
+      color: CHART_INK.onFill,
+      fontSize: 10.5,
+      // The bar's height is the SIZE of the step; what the label says is the step's own signed
+      // amount, so an expense of 56.000 reads as −$56.000 however tall its bar is.
+      formatter: (param) => {
+        const step = steps[param.dataIndex];
+        const piece = pieces[param.dataIndex];
+        return step && piece?.carrier === side ? formatCurrency(step.value) : "";
+      },
+    },
+    labelLayout: { hideOverlap: true },
+  });
+
+  return {
+    ...chrome(1),
+    xAxis: {
+      ...categoryAxis(steps.map((step) => step.label)),
+      // Account names are long and every step must be named: they wrap instead of being
+      // dropped by `hideOverlap`, and `outerBoundsContain` shrinks the plot to fit them.
+      axisLabel: {
+        color: CHART_INK.muted,
+        fontSize: 10.5,
+        interval: 0,
+        width: 84,
+        overflow: "break",
+        hideOverlap: false,
+      },
+    },
+    yAxis: { ...valueAxis("moneda"), min, max },
+    tooltip: {
+      trigger: "axis",
+      axisPointer: { type: "shadow", lineStyle: { color: CHART_LINES.axis, width: 1 } },
+      ...TOOLTIP_CHROME,
+      // Read off the STEP and not off the params, which is how the transparent base — a series
+      // like any other to the renderer — never gets a row of its own.
+      formatter: (params) => {
+        const first = Array.isArray(params) ? params[0] : params;
+        const step = first ? steps[first.dataIndex] : undefined;
+        if (!step) {
+          return "";
+        }
+        return step.kind === "total"
+          ? `${step.label}<br/>${formatCurrency(step.value)}`
+          : `${step.label}<br/>${formatCurrency(step.value)} · acumulado ${formatCurrency(step.end)}`;
+      },
+    },
+    series: [
+      base("positivo"),
+      base("negativo"),
+      { ...fill("positivo"), markLine: connectors(steps) },
+      fill("negativo"),
+    ],
+  };
+}
+
+/** The table twin: what each step took away, and where the statement stood after it. */
+export function waterfallTable(steps: WaterfallStep[]): ChartTable {
+  return {
+    columns: ["Monto", "Acumulado"],
+    rows: steps.map((step) => ({
+      id: step.code,
+      label: step.label,
+      color: waterfallColor(step),
+      values: [formatCurrency(step.value), formatCurrency(step.end)],
+    })),
+  };
+}
+
+/** The two halves of a step and the base each one floats on. */
+interface WaterfallPieces {
+  basePositive: number | null;
+  positive: number | null;
+  baseNegative: number | null;
+  negative: number | null;
+  /** Which half carries the direct label: the visible one, or the closing one when both are. */
+  carrier: WaterfallSide;
+}
+
+function piecesOf(step: WaterfallStep): WaterfallPieces {
+  const low = Math.min(step.start, step.end);
+  const high = Math.max(step.start, step.end);
+  const basePositive = Math.max(low, 0);
+  const positive = Math.max(high, 0) - basePositive;
+  const baseNegative = Math.min(high, 0);
+  const negative = Math.min(low, 0) - baseNegative;
+
+  return {
+    basePositive: drawn(basePositive),
+    positive: drawn(positive),
+    baseNegative: drawn(baseNegative),
+    negative: drawn(negative),
+    carrier: negative !== 0 && (positive === 0 || step.value < 0) ? "negativo" : "positivo",
+  };
+}
+
+/** A zero-height piece is `null`, so the renderer draws nothing rather than a hairline. */
+function drawn(value: number): number | null {
+  return value === 0 ? null : value;
+}
+
+/**
+ * A total takes slot 1 of the palette — it is the brand's own bar and says "this is how much
+ * there is" — except the closing one, which takes the sign of the result, because whether the
+ * period ended up or down is the reading it exists for. A step takes the sign of its own
+ * amount: expenses fall and are red, and a credited group that rises is not painted as a loss.
+ */
+function waterfallColor(step: WaterfallStep): string {
+  if (step.kind === "total" && step.code !== RESULT_CODE) {
+    return CHART_PALETTE[0];
+  }
+  return step.value < 0 ? CHART_SIGN.negative : CHART_SIGN.positive;
+}
+
+/** The thin line from the close of one step to the start of the next — what makes it a cascade. */
+function connectors(steps: WaterfallStep[]): ChartSeries["markLine"] {
+  return {
+    silent: true,
+    symbol: "none",
+    label: { show: false },
+    lineStyle: { color: CHART_INK.faint, width: 1, type: "solid" },
+    data: steps
+      .slice(0, -1)
+      .map((step, index) => [{ coord: [index, step.end] }, { coord: [index + 1, step.end] }]),
+  };
+}
+
+/**
+ * The scale comes from every `start` and `end` there is, zero included — a period that closes
+ * in a loss has to fit under the axis, and a scale derived from the visible bar heights alone
+ * would cut it off.
+ */
+function waterfallExtent(steps: WaterfallStep[]): { min: number; max: number } {
+  const bounds = steps.flatMap((step) => [step.start, step.end]);
+  return {
+    min: niceBound(Math.min(0, ...bounds) * AXIS_PADDING, "floor"),
+    max: niceBound(Math.max(0, ...bounds) * AXIS_PADDING, "ceil"),
+  };
+}
+
+/** Rounds out to a step of one order of magnitude below the value, so the ticks stay round. */
+function niceBound(value: number, direction: "floor" | "ceil"): number {
+  if (value === 0) {
+    return 0;
+  }
+  const step = 10 ** (Math.floor(Math.log10(Math.abs(value))) - 1);
+  return (direction === "ceil" ? Math.ceil(value / step) : Math.floor(value / step)) * step;
 }
 
 /* ------------------------------------------------------------- shape dispatchers */

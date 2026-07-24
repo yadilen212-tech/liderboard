@@ -24,7 +24,8 @@ export type ChartType =
   | "dona"
   | "linea"
   | "combo"
-  | "pareto";
+  | "pareto"
+  | "cascada";
 
 /** The engine transformation a card applies. `montos` is the identity — the raw series. */
 export type TransformId =
@@ -37,7 +38,8 @@ export type TransformId =
   | "pct-ingresos"
   | "pct-contenedor"
   | "variacion"
-  | "pareto";
+  | "pareto"
+  | "cascada";
 
 /**
  * Which shapes a transformation admits, in preference order. The head is what a view falls
@@ -55,6 +57,9 @@ export const SHAPES_BY_TRANSFORM: Record<TransformId, readonly ChartType[]> = {
   "pct-contenedor": ["barras-100"],
   variacion: ["barras"],
   pareto: ["pareto"],
+  // Una cascada es una cascada: la lista de una sola entrada es lo que hace que `shapeFor`
+  // devuelva siempre la misma forma y que la tarjeta no tenga selector que ofrecer.
+  cascada: ["cascada"],
 };
 
 export type TransformGroup = "temporal" | "estructura" | "variacion";

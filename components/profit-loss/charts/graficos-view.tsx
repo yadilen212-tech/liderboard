@@ -31,6 +31,7 @@ import { usePygAnalytics } from "../pyg-analytics-provider";
 import { usePygData } from "../pyg-data-provider";
 import { ChartCard } from "./chart-card";
 import { StatTile } from "./stat-tile";
+import { WaterfallCard } from "./waterfall-card";
 
 const EMPTY_TABLE: ChartTable = { columns: [], rows: [] };
 
@@ -120,6 +121,14 @@ export function GraficosView() {
           sign={result === null ? undefined : result < 0 ? "negativo" : "positivo"}
         />
       </div>
+
+      {/* Primero la historia completa —de dónde salió el ingreso y en qué se fue—, y recién
+          después las comparaciones, que responden preguntas más finas. */}
+      <WaterfallCard
+        source={source}
+        frequency={context.frequency}
+        periods={selection.periods.length > 0 ? selection.periods : undefined}
+      />
 
       {comparing && comparison ? (
         <ChartCard

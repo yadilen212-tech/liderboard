@@ -6,7 +6,8 @@ import {
   CHART_PALETTE,
   CHART_SIGN,
 } from "@/lib/charts/palette";
-import type { ChartOption, ChartParam, ChartPieDatum } from "@/lib/charts/types";
+import type { ChartBarDatum, ChartOption, ChartParam, ChartPieDatum } from "@/lib/charts/types";
+import { formatCurrency } from "@/lib/format";
 import { CULTURA_MANOR_SOURCE, makeSeries } from "../analytics/fixtures";
 import { periodsForYear } from "../analytics/period";
 import { buildSeries } from "../analytics/series";
@@ -28,7 +29,10 @@ import {
   signColorOf,
   stackedOption,
   variationBarOption,
+  waterfallOption,
+  waterfallTable,
 } from "./option";
+import { RESULT_CODE, type WaterfallStep } from "./waterfall";
 
 const PERIODS = periodsForYear(2026, "mensual");
 const CONTEXT = { colorOf: (key: SeriesKey) => slotFor(key.code), periods: PERIODS };
@@ -462,5 +466,130 @@ describe("interacción de la gráfica", () => {
     expect(html).toContain("Restaurante");
     expect(html).toContain("$750");
     expect(html).toContain("75,0 %");
+  });
+});
+
+describe("la cascada se dibuja como barras", () => {
+  /** Cultura Manor Ene–Jul, ya derivada: ingresos, dos grupos de gasto y la utilidad. */
+  const STEPS: WaterfallStep[] = [
+    { kind: "total", code: "4", label: "Ingresos", value: 176_303, start: 0, end: 176_303 },
+    {
+      kind: "delta",
+      code: "5.1.5",
+      label: "Gastos Generales",
+      value: -77_847,
+      start: 176_303,
+      end: 98_456,
+    },
+    {
+      kind: "delta",
+      code: "5.1.1",
+      label: "Gastos de Personal",
+      value: -63_000,
+      start: 98_456,
+      end: 35_456,
+    },
+    { kind: "total", code: RESULT_CODE, label: "Utilidad", value: 35_456, start: 0, end: 35_456 },
+  ];
+
+  /** Un centro cuyos gastos se comen el ingreso: el escalón cruza el cero y el cierre queda bajo él. */
+  const PERDIDA: WaterfallStep[] = [
+    { kind: "total", code: "4", label: "Ingresos", value: 10_000, start: 0, end: 10_000 },
+    {
+      kind: "delta",
+      code: "5.1.1",
+      label: "Sueldos",
+      value: -25_000,
+      start: 10_000,
+      end: -15_000,
+    },
+    { kind: "total", code: RESULT_CODE, label: "Pérdida", value: -15_000, start: 0, end: -15_000 },
+  ];
+
+  const seriesById = (option: ChartOption, id: string) =>
+    option.series.find((series) => series.id === id);
+
+  it("apila barras, y solo barras, en un mismo stack", () => {
+    const option = waterfallOption(STEPS);
+
+    expect(option.series.every((series) => series.type === "bar")).toBe(true);
+    expect(new Set(option.series.map((series) => series.stack)).size).toBe(1);
+  });
+
+  it("deja el tramo base invisible y fuera de la leyenda y del tooltip", () => {
+    const option = waterfallOption(STEPS);
+    const base = seriesById(option, "cascada-base-positivo");
+
+    // Gastos Generales cierra en 98.456: esa es la altura de su tramo transparente.
+    expect(base?.data[1]).toBe(98_456);
+    expect(base?.itemStyle?.color).toBe("transparent");
+    expect(base?.label?.show).toBe(false);
+    expect(option.legend?.show).toBe(false);
+    expect(tooltipOf(option, [{ dataIndex: 1 }])).toBe(
+      `Gastos Generales<br/>${formatCurrency(-77_847)} · acumulado ${formatCurrency(98_456)}`,
+    );
+  });
+
+  it("declara un solo eje de valores", () => {
+    const option = waterfallOption(STEPS);
+
+    expect(option.yAxis?.type).toBe("value");
+    expect(option.xAxis?.data).toEqual([
+      "Ingresos",
+      "Gastos Generales",
+      "Gastos de Personal",
+      "Utilidad",
+    ]);
+  });
+
+  it("etiqueta cada escalón con su monto y su signo, una sola vez", () => {
+    const option = waterfallOption(STEPS);
+    const positivo = seriesById(option, "cascada-positivo");
+    const negativo = seriesById(option, "cascada-negativo");
+    const param = { value: 77_847, name: "Gastos Generales", dataIndex: 1 };
+
+    // La barra mide 77.847 hacia arriba desde su base, pero lo que dice es lo que restó.
+    expect(positivo?.label?.formatter?.(param)).toBe(formatCurrency(-77_847));
+    expect(negativo?.label?.formatter?.(param)).toBe("");
+  });
+
+  it("pinta los totales con la ranura 1 y los gastos con el token de signo", () => {
+    const fills = seriesById(waterfallOption(STEPS), "cascada-positivo")?.data as ChartBarDatum[];
+
+    expect(fills[0].itemStyle?.color).toBe(CHART_PALETTE[0]);
+    expect(fills[1].itemStyle?.color).toBe(CHART_SIGN.negative);
+    expect(fills[3].itemStyle?.color).toBe(CHART_SIGN.positive);
+  });
+
+  it("conecta el cierre de un escalón con el arranque del siguiente", () => {
+    const markLine = seriesById(waterfallOption(STEPS), "cascada-positivo")?.markLine;
+
+    expect(markLine?.data).toHaveLength(STEPS.length - 1);
+    expect(markLine?.data[0]).toEqual([{ coord: [0, 176_303] }, { coord: [1, 176_303] }]);
+  });
+
+  it("no recorta un resultado negativo", () => {
+    const option = waterfallOption(PERDIDA);
+    const positivo = seriesById(option, "cascada-positivo")?.data as ChartBarDatum[];
+    const negativo = seriesById(option, "cascada-negativo")?.data as ChartBarDatum[];
+
+    expect(Number(option.yAxis?.min)).toBeLessThanOrEqual(-15_000);
+    expect(Number(option.yAxis?.max)).toBeGreaterThanOrEqual(10_000);
+    // El escalón que cruza el cero se dibuja en dos tramos, uno a cada lado del eje.
+    expect(positivo[1].value).toBe(10_000);
+    expect(negativo[1].value).toBe(-15_000);
+    expect(negativo[2].value).toBe(-15_000);
+  });
+
+  it("ofrece la gemela en tabla con el monto y el acumulado de cada escalón", () => {
+    const table = waterfallTable(STEPS);
+
+    expect(table.columns).toEqual(["Monto", "Acumulado"]);
+    expect(table.rows[1]).toMatchObject({
+      id: "5.1.5",
+      label: "Gastos Generales",
+      color: CHART_SIGN.negative,
+      values: [formatCurrency(-77_847), formatCurrency(98_456)],
+    });
   });
 });

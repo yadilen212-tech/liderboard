@@ -249,6 +249,12 @@ describe("saneamiento de la selección", () => {
     expect(shapeFor("pct-contenedor", "linea")).toBe("barras-100");
     expect(shapeFor("montos", "linea")).toBe("linea");
   });
+
+  it("no le ofrece otra forma a la cascada", () => {
+    // Una cascada dibujada como pastel o como línea no dice nada: la única forma es la suya.
+    expect(shapeFor("cascada", "pastel")).toBe("cascada");
+    expect(shapeFor("cascada", "linea")).toBe("cascada");
+  });
 });
 
 describe("tope de series de una gráfica", () => {

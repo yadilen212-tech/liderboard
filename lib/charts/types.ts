@@ -78,6 +78,19 @@ export interface ChartItemStyle {
   borderRadius?: number | number[];
 }
 
+/**
+ * One end of a mark line: a whole-axis reference (`xAxis`/`yAxis`), or an exact point of the
+ * plot. `coord` is what lets a line stop somewhere — the connector of a cascade runs from the
+ * close of one step to the start of the next, not across the whole grid.
+ */
+export interface ChartMarkPoint {
+  xAxis?: number;
+  yAxis?: number;
+  /** `[índice de categoría, valor]`. */
+  coord?: [number, number];
+  name?: string;
+}
+
 export interface ChartMarkLine {
   silent?: boolean;
   symbol?: string | string[];
@@ -89,7 +102,8 @@ export interface ChartMarkLine {
     fontSize?: number;
   };
   lineStyle?: ChartLineStyle;
-  data: { xAxis?: number; yAxis?: number; name?: string }[];
+  /** A lone point is a reference line across the plot; a pair is the segment between them. */
+  data: (ChartMarkPoint | [ChartMarkPoint, ChartMarkPoint])[];
 }
 
 /** One slice of a pie, which needs its own name alongside the value. */
@@ -130,6 +144,8 @@ export interface ChartSeries {
   radius?: string | [string, string];
   center?: [string, string];
   markLine?: ChartMarkLine;
+  /** Takes the series out of hover and emphasis — for a mark that exists only to hold space. */
+  silent?: boolean;
   z?: number;
 }
 
