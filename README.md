@@ -52,13 +52,99 @@ lib/date.ts              etiquetas de calendario compartidas (meses en español)
 lib/charts/              paleta categórica y sistema de marcas, comunes a toda la app
 lib/profit-loss/analytics/  motor analítico puro (series, transformaciones, Pareto, pastel)
 lib/profit-loss/charts/  traducción pura: selección → consulta → opción de ECharts
-docs/superpowers/specs/  specs de diseño aprobados
+openspec/                especificación viva: propuestas de cambio y specs por capacidad
 ```
+
+## Especificación (OpenSpec)
+
+Todo cambio no trivial se especifica con **[OpenSpec](https://github.com/Fission-AI/OpenSpec)**
+antes de tocar código. El flujo vive en `openspec/`:
+
+- `openspec/changes/<nombre>/` — una propuesta en curso: `proposal.md` (por qué), `design.md`
+  (cómo), `specs/<capacidad>/spec.md` (requisitos con escenarios) y `tasks.md` (pasos). Se
+  crean con `openspec new change` o con el skill `/opsx:propose`, y se validan con
+  `openspec validate <nombre>`.
+- `openspec/specs/<capacidad>/spec.md` — la especificación **vigente** de cada capacidad, a la
+  que un cambio se archiva (`/opsx:archive`) una vez implementado.
+
+No se usa `docs/superpowers/specs/` para specs nuevos: OpenSpec es la única fuente.
 
 Las **funciones de formato son de toda la app**: cualquier número que se muestre al
 usuario pasa por `lib/format.ts` (`formatCurrency` → USD de Ecuador con símbolo `$`) para
 que todo el panel hable el mismo idioma. Los módulos nuevos las reutilizan en vez de
 formatear localmente.
+
+## Sistema visual
+
+Los tokens viven una sola vez en el bloque `@theme` de `app/globals.css` y se consumen como
+utilidades de Tailwind (`bg-brand`, `text-muted`, …). **Antes de escribir markup nuevo, usa un
+token y una primitiva de `components/ui/`; no escribas hex sueltos ni estilos en línea.**
+
+### Color
+
+| Token                          | Valor                             | Uso                                                              |
+| ------------------------------ | --------------------------------- | ---------------------------------------------------------------- |
+| `brand`                        | `#1e3a5f`                         | Azul de marca: acción primaria, textos activos, código de cuenta |
+| `brand-hover`                  | `#16324f`                         | Hover de la acción primaria                                      |
+| `brand-soft`                   | `rgba(30,58,95,.08)`              | Fondo tenue de un control/fila activos                           |
+| `canvas`                       | `#f4f6f8`                         | Fondo de la app (detrás de las tarjetas)                         |
+| `surface`                      | `#ffffff`                         | Fondo de tarjeta, tabla, panel                                   |
+| `surface-header`               | `#fafbfc`                         | Cabeceras y pies de tarjeta/tabla                                |
+| `surface-muted`                | `#f8fafc`                         | Hover de fila, franja de descanso                                |
+| `surface-sunken`               | `#f3f6f9`                         | Barra hundida (toolbar `tone="sunken"`)                          |
+| `border`                       | `#e5e9ee`                         | Borde estándar de tarjeta/control                                |
+| `border-soft` / `border-faint` | `#edf1f5` / `#f1f4f7`             | Separadores internos de tabla, cada vez más tenues               |
+| `ink` / `ink-soft`             | `#1e293b` / `#334155`             | Texto principal y su variante suave                              |
+| `muted` / `faint` / `faintest` | `#64748b` / `#94a3b8` / `#b4bec9` | Texto secundario → terciario → placeholder                       |
+| `positive` / `negative`        | `#16a34a` / `#dc2626`             | **Solo el signo** de un valor (rojo = negativo/pérdida)          |
+| `warning`                      | `#d97706`                         | Avisos de cuadre, marca de celda comentada                       |
+| `zero`                         | `#c2cbd5`                         | El `–` de una celda en cero                                      |
+| `chip` / `chip-border`         | `#eef2f6` / `#dce3eb`             | Fondo y borde de chips de filtro                                 |
+
+**Verde y rojo son señal de signo, no colores de serie.** Nunca pintan una categoría, y nunca
+viajan solos: siempre acompañados de flecha (`▲`/`▼`) y del valor con signo, porque el color
+solo no es una lectura para todos.
+
+### Tipografía
+
+- **Fuentes:** IBM Plex Sans (`font-sans`) para todo el texto; IBM Plex Mono (`font-mono`) para
+  cifras, códigos de cuenta y valores editables. Se cargan con `next/font` en `app/layout.tsx`.
+- **Todo número usa `tabular-nums`** para que las columnas alineen.
+- **Escala real en uso** (px, porque el diseño es de densidad fija de escritorio):
+
+  | Tamaño      | Dónde                                                     |
+  | ----------- | --------------------------------------------------------- |
+  | `21px`      | Cifra de un stat tile                                     |
+  | `15px`      | Título de un panel lateral                                |
+  | `13–14px`   | Celdas de tabla, cuerpo de controles, botón primario `md` |
+  | `12.5px`    | Cuerpo de controles secundarios, etiquetas de métrica     |
+  | `11.5px`    | Subtítulos, pies de tabla, badges de resultado            |
+  | `10.5–11px` | Micro-etiquetas en versalitas, código de cuenta           |
+
+- Las **micro-etiquetas** van en versalitas: `uppercase tracking-[0.5px]` (o `0.6px`) con
+  `font-semibold text-faint`. Es el patrón de `ToolbarLabel` y de los encabezados de columna.
+
+### Forma y espacio
+
+- **Radios:** `13px` tarjeta/tabla/panel · `9px` botón y control de toolbar · `8–12px`
+  popovers y campos · `rounded-full` chips y badges.
+- **Alturas de control:** toolbar `34px` · botón `md` `38px` / `sm` `32px` (`h-8`) · input de
+  popover `h-9` · botón de popover `h-8`.
+- **Padding de contenido:** `px-7 py-5` en el cuerpo de una vista · `px-[18px] py-3` en
+  cabeceras de tarjeta · `gap-2.5` entre controles de una toolbar.
+- **Sombras:** siempre `rgba(15,23,42,…)` (nunca negro puro). Popover
+  `0_18px_50px_/.22`; modal `0_24px_60px_/.24`; panel lateral `-18px_0_50px_/.13`.
+- **Iconos:** `lucide-react`, tamaño `13–16px` según el control.
+
+### Gráficas
+
+El sistema de marcas vive en `lib/charts/palette.ts` y es la **única** fuente de color de una
+gráfica: `colorForEntity` es la única forma en que una serie recibe color. La paleta tiene
+**ocho ranuras** en un orden que las mantiene separables bajo daltonismo — **no se re-ordenan
+ni se ciclan**. Una opción de ECharts es un objeto plano que un canvas no puede resolver contra
+una variable CSS, así que los hexes de `palette.ts` **espejan** los del `@theme` a propósito:
+ese es el único punto de duplicación permitido, y ningún constructor de opción escribe un hex
+propio. (Ver "Gráficos y Análisis" para las reglas de cobertura y doble eje.)
 
 ## Estado actual
 
@@ -69,38 +155,59 @@ Los módulos y su navegación salen de `lib/modules.ts`. Cada módulo expone las
 
 - El **nombre del cliente activo** se muestra en el header del módulo (`ActiveClient`),
   con estado vacío mientras no se carga un Excel.
-- **Sección de filtros** bajo las tabs: cuenta contable, **nivel** (único control de
-  profundidad del árbol: expande/colapsa hasta el nivel elegido, o "Todos los niveles"; el
-  máximo es el nivel más profundo de **todos** los archivos del workspace), centro de costos,
-  granularidad (Ver por) y período. La lista de cuentas y los centros salen del Excel cargado;
-  el estado vacío solo aparece cuando no hay datos.
-- **Recuadro "Comparar por"** en Gráficos y Análisis (colapsable, cerrado por defecto), ya
-  conectado al motor analítico (ver "Gráficos y Análisis" más abajo).
+- **La fila de filtros es la única selección del módulo** — no hay un segundo control (ni
+  "Comparar por", ni un selector de centro propio de Datos) donde elegir lo mismo distinto.
+  En orden: **Cuenta contable** (marca varias; son a la vez el foco de la tabla de Datos y el
+  universo de cuentas de las gráficas), **Nivel** (único control de profundidad del árbol:
+  expande/colapsa hasta el nivel elegido, o "Todos los niveles"; el máximo es el nivel más
+  profundo de **todos** los archivos del workspace; no filtra series, solo pliega la tabla),
+  **Centro de costo** (checkboxes por vista real + atajo "Todos (Consolidado)"; oculto en
+  modo un-solo-archivo) y **Periodo** (checkboxes de la granularidad activa; acota el eje de
+  toda la pestaña y las columnas de Datos, nunca convierte un periodo en serie), con **Ver
+  por** (granularidad) alineado a la derecha. Debajo, una **franja de chips** (una por marca
+  activa, más "Quitar todo") aparece solo cuando hay algo marcado y es la misma en las tres
+  pestañas. Las listas de cuentas y centros salen del Excel cargado; el estado vacío solo
+  aparece cuando no hay datos.
 - Leyenda de **semáforo** en la fila de tabs.
 - **Barra de acciones de Datos** (`DatosToolbar`, solo en la tab Datos, bajo la fila de
-  filtros): barra **fija** de una fila con el selector de **Centro de costos** a la izquierda
-  (solo en modo multi-centro; ver abajo) y las acciones de Excel a la derecha — **Cargar
-  Excel** (abre el modal de carga multi-centro), menú **Descargar Excel** (Excel con tus datos
-  · Plantilla vacía, ambos conectados al pipeline de exportación) e ícono de **información**
-  con los formatos aceptados. (La profundidad del árbol se controla desde el filtro **nivel**
-  de la fila de filtros; el drill-down por fila con los chevrons de la grilla sigue disponible.)
+  filtros): barra **fija** de una fila con las acciones de Excel — **Cargar Excel** (abre el
+  modal de carga multi-centro), menú **Descargar Excel** (Excel con tus datos · Plantilla
+  vacía, ambos conectados al pipeline de exportación) e ícono de **información** con los
+  formatos aceptados. Ya no lleva selector de centro propio: qué centro lee y si es editable
+  sale del filtro **Centro de costo** de la fila de filtros (ver abajo).
 
 **Tabla de Datos de PyG** (`DatosView` en la tab Datos) — el estado de resultados editable:
 
 - Componente **controlado por props y listo para el Excel**: sin datos muestra un **estado
   vacío** ("Carga un Excel…"); cuando llegan filas, arma la grilla. La carga y la descarga
   del Excel ya están implementadas (ver "Carga de Excel" y "Descarga de Excel" más abajo).
-- Grilla con **árbol de cuentas** (expandir/colapsar), 12 meses + **Total**, **columnas
+- Grilla con **árbol de cuentas** (expandir/colapsar), meses + **Total**, **columnas
   ordenables**, negativos en rojo, ceros como `–` y marca de esquina en celdas con comentario.
+  El filtro **Periodo** acota qué columnas se ven (conservando el índice real de cada mes, así
+  que editar sigue escribiendo en el mes correcto); el **Total** sigue siendo el del año
+  completo y se rotula **"Total año"** mientras haya un recorte de periodos activo, para que
+  nadie lo lea como la suma de lo visible.
 - **Edición de celdas**: solo las **cuentas de movimiento** (hoja del árbol) editan su valor;
   las **cuentas padre** se calculan desde sus movimientos y solo admiten comentario. Ediciones
   y comentarios persisten en IndexedDB (Dexie) y solo están disponibles en la vista Mensual.
-- **Selector de centro de costos** (`CostCenterTabs`, en la barra de acciones fija, solo en
-  modo multi-centro): alterna entre el **Consolidado** (suma de los centros mensuales, solo
-  lectura), cada **centro** (editable en vista Mensual) y **Sin centro de costo** (anual, solo
-  lectura, tomado del archivo consolidado); un ícono de **información** explica esa semántica.
-  Al vivir en la barra fija, no se va con el scroll de la tabla. El subtítulo del header nombra
-  el centro activo.
+- **Centro de costo, derivado del filtro** (no un selector propio de Datos): ningún centro
+  marcado o varios marcados resuelven al **Consolidado** (suma de los centros mensuales, solo
+  lectura); exactamente un centro marcado resuelve a **ese** centro (editable en vista Mensual,
+  salvo **Sin centro de costo**, que es anual y por tanto solo lectura). La tabla nombra la
+  causa cuando no se puede editar (Consolidado, varios centros marcados, o vista no mensual).
+  El subtítulo del header nombra el centro resuelto.
+- **Ficha de cuenta** (panel lateral): cada fila de cuenta trae un enlace **«ficha»** que
+  aparece al pasar el mouse (columna fija a la derecha, para que no se pierda con el scroll
+  horizontal; alcanzable con teclado). Abre un `SidePanel` derecho —sin velo, para leerse
+  _contra_ la tabla— que resume el rendimiento de esa cuenta en **todos los periodos con
+  información**: total, periodos con movimiento sobre periodos cubiertos (`2 de 7`, no de 12),
+  promedio de periodos activos, periodo más alto, % dentro del padre, variación del último
+  periodo contra el anterior y nivel en el plan; más la evolución dibujada con el mismo
+  `barOption` dentro de una `ChartCard`. Los números salen del **motor analítico** (una consulta
+  de una cuenta), así que heredan su cobertura: un `null` nunca se cuenta como `0` y un cero real
+  no cuenta como movimiento. Sigue la **frecuencia activa** (en Anual, sin gráfica). Las reglas
+  viven en `lib/profit-loss/charts/account-detail.ts` (puro, testeado); el panel solo formatea.
+  Aplica a todas las cuentas salvo «Utilidad o Pérdida», que es derivada.
 - Rendimiento: filas memoizadas (`React.memo`), derivaciones con `useMemo` y
   `content-visibility` en las filas; sin virtualización (aún no hace falta).
 
@@ -115,23 +222,32 @@ capa de traducción pura y testeada; ya no muestran "próximamente".
   cuentas y centros, composición de un total). _Análisis_ responde **cómo cambia**: las
   transformaciones del motor — acumulado YTD, índice base 100, media móvil, mismo periodo del
   año anterior, % sobre ingresos, % sobre la cuenta padre, variación y concentración de gastos.
-- **Vista por defecto.** Con un Excel cargado ambas pestañas muestran algo útil **antes de
-  configurar nada**: _Gráficos_ trae los totales del periodo como **stat tiles** (Ingresos,
-  Costos y Gastos, Utilidad o Pérdida — un total es un número, no una gráfica de una barra), la
-  evolución de Ingresos contra Costos y Gastos, la composición de los ingresos y el ranking de
-  gastos; _Análisis_ trae el % sobre ingresos de los gastos principales, la variación contra el
-  periodo anterior y el Pareto. Los presets son **consultas normales al motor**, la misma ruta
-  que usa "Comparar" — no un camino aparte.
-- **"Comparar por" conectada.** Sus cuatro dimensiones (`cuentas`, `centros`, `periodos`,
-  `niveles`) se traducen a los ejes de `SeriesQuery`, con un cruce opcional ("Y también por")
-  que agrega el segundo eje del producto cartesiano. El selector "Agregar" lista las cuentas
-  del centro activo o los centros reales del workspace. Elegir una dimensión reemplaza la
-  tarjeta de comparación y **conserva los stat tiles**; volver a «Nada» restaura el preset.
-- **Estado compartido.** `PygAnalyticsProvider` (montado dentro de `PygDataProvider`, así que
-  el layout no cambia) expone `usePygAnalytics()`: la barra de herramientas y el panel leen
-  **una sola selección**. Vive **en memoria** — sobrevive al cambio entre Gráficos y Análisis,
-  no al recargar — y se **sanea** al cambiar de workspace, de centro activo o de frecuencia:
-  lo que dejó de existir se descarta y la pestaña vuelve a su vista por defecto.
+- **Vista por defecto, y filtros que acotan en vez de reemplazar.** Con un Excel cargado y
+  nada marcado en la fila de filtros, _Gráficos_ trae los totales del periodo como **stat
+  tiles** (Ingresos, Costos y Gastos, Utilidad o Pérdida — un total es un número, no una
+  gráfica de una barra), la evolución de Ingresos contra Costos y Gastos, la composición de
+  los ingresos y el ranking de gastos; _Análisis_ trae el % sobre ingresos de los gastos
+  principales, la variación contra el periodo anterior y el Pareto. No hay una tarjeta de
+  "Comparación" aparte: la tarjeta de evolución de Gráficos dibuja las cuentas (y centros)
+  marcados cuando los hay, y las tarjetas de pregunta fija (composición, ranking, cascada, y
+  las tres de Análisis) **intersecan** su universo con las cuentas marcadas — vacía a
+  propósito cuando lo marcado cae fuera de su pregunta, con un estado vacío que nombra la
+  causa en vez de un panel en blanco. Todos son **consultas normales al motor**
+  (`toSeriesQuery`/`presetQuery`), la misma ruta para el preset y para lo marcado — no hay un
+  camino aparte. En Análisis, elegir una transformación del selector agrega una cuarta
+  tarjeta construida sobre las mismas marcas; las tres de pregunta fija no desaparecen.
+- **Sin una segunda selección que declarar.** El eje de comparación nunca se elige: marcar
+  varias cuentas y/o varios centros en el filtro **es** la comparación, y el color se deriva
+  del conteo de lo marcado (por cuenta, por centro, o por el par cuenta×centro cuando ambos
+  ejes tienen más de una marca) en vez de leerse de una dimensión declarada.
+- **Estado compartido, repartido por a quién sirve.** Los tres ejes de la selección —cuentas,
+  centros y periodos marcados— viven en `PygFilters` dentro de `PygDataProvider` (en
+  `lib/profit-loss/filters.ts`, puro), porque las tres pestañas los leen; se sanean **en
+  lectura**, nunca en un efecto. `PygAnalyticsProvider` (montado dentro de `PygDataProvider`,
+  así que el layout no cambia) expone `usePygAnalytics()` con solo la mitad de presentación —
+  `transform`, `chartType`, `sources`, `colorOf`, `runQuery` — porque solo Gráficos/Análisis
+  la usan. La selección vive **en memoria** — sobrevive al cambio entre pestañas, no al
+  recargar.
 
 **Reglas que las gráficas no rompen** (cada una con su test en la capa pura):
 

@@ -14,11 +14,15 @@ export interface DatosTableRowProps {
   row: DatosRow;
   hasChildren: boolean;
   isCollapsed: boolean;
-  monthsCount: number;
+  /** Real column indices to render, in order — the "Periodo" filter's doing. */
+  visibleColumns: number[];
   editable: boolean;
   showTotal: boolean;
+  /** The ficha panel is currently showing this row. */
+  detailOpen: boolean;
   onToggle: (code: string) => void;
   onEditCell: (code: string, col: number, anchor: EditorAnchor, valueEditable: boolean) => void;
+  onOpenDetail: (code: string) => void;
 }
 
 /**
@@ -30,11 +34,13 @@ function DatosTableRowImpl({
   row,
   hasChildren,
   isCollapsed,
-  monthsCount,
+  visibleColumns,
   editable,
   showTotal,
+  detailOpen,
   onToggle,
   onEditCell,
+  onOpenDetail,
 }: DatosTableRowProps) {
   const emphasized = row.isResult || row.level === 1;
   // Weight by role, not depth: parent (summary) accounts stand out; movement (leaf,
@@ -50,7 +56,10 @@ function DatosTableRowImpl({
   const valueEditable = openable && Boolean(row.movement);
 
   return (
-    <tr style={{ contentVisibility: "auto", containIntrinsicSize: "auto 39px" }}>
+    <tr
+      className="group hover:bg-surface-muted"
+      style={{ contentVisibility: "auto", containIntrinsicSize: "auto 39px" }}
+    >
       <td
         className={cn(
           "max-w-[380px] border-b border-border-soft p-0",
@@ -85,7 +94,7 @@ function DatosTableRowImpl({
         </div>
       </td>
 
-      {Array.from({ length: monthsCount }, (_, col) => {
+      {visibleColumns.map((col) => {
         const cell = row.cells[col];
         return (
           <DataCell
@@ -99,7 +108,58 @@ function DatosTableRowImpl({
       })}
 
       {showTotal && <TotalCell value={rowTotal(row)} emphasized={Boolean(row.isResult)} />}
+
+      <DetailCell
+        code={row.code}
+        name={row.name}
+        // The result row is derived, not an account of the chart of accounts: it has no ficha.
+        available={!row.isResult}
+        open={detailOpen}
+        onOpen={onOpenDetail}
+      />
     </tr>
+  );
+}
+
+/**
+ * The ficha trigger, in its own column pinned to the right edge of the scroller. Pinned because
+ * the grid is wider than the viewport almost always: an ordinary last column would sit off
+ * screen exactly when the reader is looking at January. The link is always visible — it is a
+ * primary way into an account, not a secondary hover affordance — and only darkens on hover.
+ */
+function DetailCell({
+  code,
+  name,
+  available,
+  open,
+  onOpen,
+}: {
+  code: string;
+  name: string;
+  available: boolean;
+  open: boolean;
+  onOpen: (code: string) => void;
+}) {
+  return (
+    <td
+      className={cn(
+        // Its own opaque background: a pinned cell scrolls OVER the amounts, so it cannot let
+        // them show through, and it has to follow the row's hover state by hand.
+        "sticky right-0 z-[1] w-[62px] border-b border-l border-border-soft bg-surface p-0 text-center transition-colors group-hover:bg-surface-muted",
+        open && "bg-brand-soft group-hover:bg-brand-soft",
+      )}
+    >
+      {available && (
+        <button
+          type="button"
+          onClick={() => onOpen(code)}
+          aria-label={`Ver ficha de ${name}`}
+          className="rounded px-2 py-1 text-[11.5px] font-semibold text-brand underline decoration-brand/30 underline-offset-2 transition-colors hover:decoration-brand"
+        >
+          ficha
+        </button>
+      )}
+    </td>
   );
 }
 

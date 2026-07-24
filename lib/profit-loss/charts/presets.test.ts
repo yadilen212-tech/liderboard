@@ -10,6 +10,7 @@ import {
   childrenOf,
   compositionQuery,
   excludedNote,
+  intersectWithMarked,
   lastCoveredIndex,
   leavesOf,
   presetQuery,
@@ -25,15 +26,13 @@ const MANOR: AnalyticsSource = {
 
 const CONTEXT: SelectionContext = {
   sources: [MANOR],
-  workspaceKey: "manor",
   activeCenterId: "cultura-manor",
   frequency: "mensual",
   year: 2026,
-  focusedCodes: [],
 };
 
-describe("los presets pasan por la misma consulta que Comparar", () => {
-  it("caps at the chart limit like any comparison", () => {
+describe("los presets pasan por la misma consulta que el resto del motor", () => {
+  it("caps at the chart limit like any other query", () => {
     const query = presetQuery(["4", "5"], CONTEXT);
 
     expect(query.codes).toEqual(["4", "5"]);
@@ -51,10 +50,54 @@ describe("los presets pasan por la misma consulta que Comparar", () => {
     expect(buildSeries([MANOR], query).truncated).toBe(0);
   });
 
-  it("follows the active center", () => {
+  it("follows the active (resolved) center", () => {
     const other = { ...CONTEXT, activeCenterId: "consolidado" };
 
     expect(presetQuery(["4"], other).centerIds).toEqual(["consolidado"]);
+  });
+
+  it("narrows the axis to the marked periods without turning them into series", () => {
+    const periods = [
+      { year: 2026, frequency: "mensual" as const, index: 0 },
+      { year: 2026, frequency: "mensual" as const, index: 2 },
+    ];
+    const query = presetQuery(["4"], CONTEXT, { periods });
+
+    expect(query.periods).toEqual(periods);
+    expect(buildSeries([MANOR], query).series).toHaveLength(1);
+  });
+
+  it("draws nothing rather than falling back to a default when the codes list is empty", () => {
+    const query = presetQuery([], CONTEXT);
+
+    expect(buildSeries([MANOR], query).series).toEqual([]);
+  });
+});
+
+describe("intersectWithMarked", () => {
+  it("is a no-op when nothing is marked", () => {
+    const universe = ["4.1.1.1.1.1", "4.1.1.2"];
+    expect(intersectWithMarked(universe, [])).toBe(universe);
+  });
+
+  it("keeps every leaf under a marked ancestor", () => {
+    const universe = leavesOf(MANOR, "5");
+    expect(intersectWithMarked(universe, ["5.1.5"])).toEqual([
+      "5.1.5.3",
+      "5.1.5.7",
+      "5.1.5.9",
+      "5.1.5.12",
+    ]);
+  });
+
+  it("keeps only the leaf itself when the mark is a leaf", () => {
+    const universe = leavesOf(MANOR, "4");
+    expect(intersectWithMarked(universe, ["4.1.1.2"])).toEqual(["4.1.1.2"]);
+  });
+
+  it("empties out when the marks fall entirely outside the universe", () => {
+    const universe = leavesOf(MANOR, "4");
+    expect(intersectWithMarked(universe, ["5.1.5.3"])).toEqual([]);
   });
 });
 

@@ -1,17 +1,18 @@
 "use client";
 
-import { ChevronDown, GitCompare, Layers, SlidersHorizontal } from "lucide-react";
-import { useState } from "react";
-import { Dropdown, DropdownPanel, DropdownTrigger } from "@/components/ui/dropdown";
+import { Layers, SlidersHorizontal } from "lucide-react";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Dropdown, DropdownPanel, DropdownTrigger } from "@/components/ui/dropdown";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Toolbar, ToolbarLabel } from "@/components/ui/toolbar";
 import { cn } from "@/lib/cn";
-import type { ModuleTabId } from "@/lib/modules";
+import { periodsForYear } from "@/lib/profit-loss/analytics/period";
 import { deepestLevel, matchExpandLevel } from "@/lib/profit-loss/filter";
 import type { AccountRow, Frequency } from "@/lib/profit-loss/types";
 import { AccountFilter } from "./account-filter";
-import { CompareBar } from "./compare-bar";
+import { ActiveFilterChips } from "./active-filter-chips";
+import { CenterFilter } from "./center-filter";
+import { PeriodFilter } from "./period-filter";
 import { usePygData } from "./pyg-data-provider";
 
 const GRANULARITIES: { value: Frequency; label: string }[] = [
@@ -21,19 +22,28 @@ const GRANULARITIES: { value: Frequency; label: string }[] = [
   { value: "anual", label: "Anual" },
 ];
 
-/** PyG filter section rendered under the tabs. Account + level filters and the frequency
- * are wired to the shared PyG dataset; only "Comparar" is still visual. */
-export function PygToolbar({ activeTab }: { activeTab: ModuleTabId }) {
+/**
+ * PyG's filter row: Cuenta contable · Nivel · Centro de costo · Periodo, with "Ver por" pinned
+ * to the right and the active-filter chip strip below. It is the ONLY place PyG selects data —
+ * there is no separate "Comparar" box — and the same row (and the same marks) reaches Datos,
+ * Gráficos and Análisis alike.
+ */
+export function PygToolbar() {
   const {
     frequency,
     allowed,
     setFrequency,
     deepestLevel: deepest,
     accountOptions,
-    selectedAccounts,
-    toggleAccount,
-    clearAccounts,
+    filters,
+    toggleCode,
+    clearCodes,
+    toggleCenter,
+    clearCenters,
+    togglePeriod,
+    clearPeriods,
     dataset,
+    views,
     collapsed,
     setExpandLevel,
   } = usePygData();
@@ -41,8 +51,9 @@ export function PygToolbar({ activeTab }: { activeTab: ModuleTabId }) {
     ...option,
     disabled: !allowed.includes(option.value),
   }));
-  const [compareOpen, setCompareOpen] = useState(false);
-  const canCompare = activeTab === "graficos" || activeTab === "analisis";
+
+  const centerOptions = views.filter((view) => view.role !== "consolidado");
+  const periods = dataset ? periodsForYear(dataset.year ?? 0, frequency) : [];
 
   return (
     <div className="shrink-0 border-b border-border bg-surface">
@@ -51,9 +62,9 @@ export function PygToolbar({ activeTab }: { activeTab: ModuleTabId }) {
 
         <AccountFilter
           accounts={accountOptions}
-          selected={selectedAccounts}
-          onToggle={toggleAccount}
-          onClear={clearAccounts}
+          selected={new Set(filters.codes)}
+          onToggle={toggleCode}
+          onClear={clearCodes}
         />
         <NivelFilter
           deepest={deepest}
@@ -61,27 +72,18 @@ export function PygToolbar({ activeTab }: { activeTab: ModuleTabId }) {
           collapsed={collapsed}
           onSelect={setExpandLevel}
         />
-
-        {canCompare && (
-          <button
-            type="button"
-            aria-expanded={compareOpen}
-            onClick={() => setCompareOpen((value) => !value)}
-            className={cn(
-              "inline-flex h-[34px] items-center gap-2 rounded-[9px] border px-3 text-[12.5px] font-semibold transition-colors",
-              compareOpen
-                ? "border-brand bg-brand-soft text-brand"
-                : "border-border bg-surface text-muted hover:bg-canvas",
-            )}
-          >
-            <GitCompare size={15} />
-            Comparar
-            <ChevronDown
-              size={14}
-              className={cn("transition-transform", compareOpen && "rotate-180")}
-            />
-          </button>
-        )}
+        <CenterFilter
+          views={centerOptions}
+          selected={filters.centerIds}
+          onToggle={toggleCenter}
+          onSelectAll={clearCenters}
+        />
+        <PeriodFilter
+          periods={periods}
+          selected={filters.periods}
+          onToggle={togglePeriod}
+          onClear={clearPeriods}
+        />
 
         <div className="ml-auto flex items-center gap-2.5">
           <ToolbarLabel>Ver por</ToolbarLabel>
@@ -96,7 +98,7 @@ export function PygToolbar({ activeTab }: { activeTab: ModuleTabId }) {
         </div>
       </Toolbar>
 
-      {canCompare && compareOpen && <CompareBar />}
+      <ActiveFilterChips />
     </div>
   );
 }
@@ -107,7 +109,8 @@ export function PygToolbar({ activeTab }: { activeTab: ModuleTabId }) {
  * fully expands it. Options run 1..(deepest-1) off the deepest movement account across ALL
  * files in the workspace; "Todos" absorbs the fully-expanded (deepest) state — a redundant
  * "Nivel deepest" (leaves have nothing to collapse). With no data (or a flat file) the panel
- * shows an empty state instead of levels.
+ * shows an empty state instead of levels. It never produces a chip: it changes how the Datos
+ * tree folds, not what data any tab draws.
  */
 function NivelFilter({
   deepest,

@@ -1,0 +1,68 @@
+"use client";
+
+import { CalendarRange, FileSpreadsheet } from "lucide-react";
+import {
+  DropdownFooter,
+  DropdownOption,
+  Dropdown,
+  DropdownPanel,
+  DropdownTrigger,
+} from "@/components/ui/dropdown";
+import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
+import { periodLabel } from "@/lib/profit-loss/analytics/period";
+import type { PeriodRef } from "@/lib/profit-loss/analytics/types";
+
+export interface PeriodFilterProps {
+  /** Every period of the active granularity, in calendar order; [] with no dataset loaded. */
+  periods: readonly PeriodRef[];
+  selected: readonly PeriodRef[];
+  onToggle: (period: PeriodRef) => void;
+  onClear: () => void;
+}
+
+/**
+ * "Periodo" filter: checkboxes over the periods of the current "Ver por" granularity, contiguous
+ * or not. Marking narrows the X axis every card and the Datos columns share — it never turns a
+ * period into its own series, which is the dimension this filter replaces.
+ */
+export function PeriodFilter({ periods, selected, onToggle, onClear }: PeriodFilterProps) {
+  const picked = new Set(selected.map((period) => period.index));
+
+  return (
+    <Dropdown>
+      <DropdownTrigger active={picked.size > 0} icon={<CalendarRange size={15} />}>
+        {picked.size > 0 ? `Periodo · ${picked.size}` : "Periodo"}
+      </DropdownTrigger>
+      <DropdownPanel width={216}>
+        {periods.length === 0 ? (
+          <EmptyState icon={<FileSpreadsheet size={22} />}>
+            Carga un Excel de Pérdidas y Ganancias para filtrar por periodo.
+          </EmptyState>
+        ) : (
+          <>
+            <div className="-mx-1 max-h-72 overflow-auto">
+              {periods.map((period) => (
+                <DropdownOption
+                  key={period.index}
+                  selected={picked.has(period.index)}
+                  onToggle={() => onToggle(period)}
+                >
+                  {periodLabel(period)}
+                </DropdownOption>
+              ))}
+            </div>
+            <DropdownFooter>
+              <Button variant="ghost" size="sm" onClick={onClear}>
+                Quitar selección
+              </Button>
+              <Button variant="primary" size="sm">
+                Listo
+              </Button>
+            </DropdownFooter>
+          </>
+        )}
+      </DropdownPanel>
+    </Dropdown>
+  );
+}

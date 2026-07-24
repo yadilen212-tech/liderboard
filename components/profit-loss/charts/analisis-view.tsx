@@ -39,6 +39,7 @@ import {
   compositionQuery,
   excludedNote,
   EXPENSE_ROOT,
+  intersectWithMarked,
   lastCoveredIndex,
   leavesOf,
   topByMagnitude,
@@ -48,6 +49,7 @@ import {
   activeSource,
   ANALYSIS_TRANSFORMS,
   SHAPES_BY_TRANSFORM,
+  toSeriesQuery,
   type ChartType,
   type TransformId,
 } from "@/lib/profit-loss/charts/selection";
@@ -65,31 +67,34 @@ const GROUP_LABELS: { id: "temporal" | "estructura" | "variacion"; label: string
 ];
 
 /**
- * Análisis answers *how it changes*: every card here is an engine transformation with a shape
- * on top. Which shape is not a free choice — `SHAPES_BY_TRANSFORM` decides, and the selector
- * never offers one the transformation cannot carry (an índice as a pie, a share stacked
- * against amounts).
- *
- * Without a selection it shows three cards that need no configuration: what the main expenses
- * weigh against revenue, how each account moved against the previous period, and where the
- * spend concentrates.
+ * Análisis answers *how it changes*. Without touching the transformation picker it shows three
+ * cards that need no configuration — the main expenses against revenue, how each account moved
+ * against the previous period, and where the spend concentrates — each intersecting its fixed
+ * question with whatever the "Cuenta contable" filter marks (task: the filter bounds every
+ * card, including these). Picking any transformation from the picker adds a fourth card built
+ * from the SAME filters through `toSeriesQuery`, in the shape that transformation admits.
  */
 export function AnalisisView() {
-  const { dataset } = usePygData();
-  const { context, comparing, comparison, colorOf, selection, setTransform, runQuery } =
-    usePygAnalytics();
+  const { dataset, filters } = usePygData();
+  const { context, colorOf, transform, chartType, setTransform, runQuery } = usePygAnalytics();
   const source = activeSource(context);
   // `toPctOfRevenue` takes the engine's own mutable array; the context keeps its list readonly.
   const sources = useMemo<AnalyticsSource[]>(() => [...context.sources], [context.sources]);
 
+  const expenseLeaves = leavesOf(source, EXPENSE_ROOT);
+  const expenseCodes = intersectWithMarked(expenseLeaves, filters.codes);
   const expenses = useMemo(
-    () => runQuery(compositionQuery(leavesOf(source, EXPENSE_ROOT), context)),
-    [runQuery, source, context],
+    () => runQuery(compositionQuery(expenseCodes, context, { periods: filters.periods })),
+    [runQuery, expenseCodes, context, filters.periods],
   );
   const period = useMemo(() => lastCoveredIndex(expenses), [expenses]);
   const periodName = expenses.periods[period]
     ? periodLabel(expenses.periods[period])
     : "Sin movimiento";
+  const expensesEmptyNote =
+    expenseLeaves.length > 0 && expenseCodes.length === 0
+      ? "El filtro de cuentas marcadas no incluye ninguna cuenta de Costos y Gastos."
+      : undefined;
 
   // % over revenue of the largest expenses — each against the revenue of ITS OWN source, which
   // is what makes two centers of very different size comparable.
@@ -128,6 +133,16 @@ export function AnalisisView() {
     [pareto],
   );
 
+  // The picker's own card: once the user picks a transformation, it draws whatever the filter
+  // bar marks (or the engine default) in that shape — `montos`, the picker's unpickable initial
+  // value, is what keeps it hidden until then, not a "comparing" flag to maintain in step.
+  const primaryQuery = useMemo(() => toSeriesQuery(filters, context), [filters, context]);
+  const primary = useMemo(() => runQuery(primaryQuery), [runQuery, primaryQuery]);
+  const primaryPeriod = useMemo(() => lastCoveredIndex(primary), [primary]);
+  const primaryPeriodName = primary.periods[primaryPeriod]
+    ? periodLabel(primary.periods[primaryPeriod])
+    : "Sin movimiento";
+
   if (!dataset) {
     return (
       <div className="px-7 py-5">
@@ -140,81 +155,75 @@ export function AnalisisView() {
 
   return (
     <div className="flex flex-col gap-4 px-7 py-5">
-      <TransformPicker value={selection.transform} onChange={setTransform} />
+      <TransformPicker value={transform} onChange={setTransform} />
 
-      {comparing && comparison ? (
+      {transform !== "montos" && (
         <TransformedCard
-          bundle={comparison}
-          transform={selection.transform}
-          chartType={selection.chartType}
+          bundle={primary}
+          transform={transform}
+          chartType={chartType}
           colorOf={colorOf}
           sources={sources}
-          periodName={periodName}
+          periodName={primaryPeriodName}
         />
-      ) : (
-        <>
-          <ChartCard
-            title="Gastos principales sobre ingresos"
-            subtitle={`% sobre ingresos · ${periodName}`}
-            option={
-              shareEntries.length > 0
-                ? horizontalBarOption(shareEntries, {
-                    colorOf: shareColor,
-                    unit: "porcentaje",
-                  })
-                : null
-            }
-            table={
-              shareEntries.length > 0
-                ? entryTable(
-                    shareEntries,
-                    { colorOf: shareColor, unit: "porcentaje" },
-                    "% ingresos",
-                  )
-                : EMPTY_TABLE
-            }
-            warnings={expenses.warnings}
-            height={300}
-          />
-
-          <div className="grid grid-cols-2 gap-4">
-            <ChartCard
-              title="Variación contra el periodo anterior"
-              subtitle={periodName}
-              option={variation.entries.length > 0 ? variationBarOption(variation.entries) : null}
-              table={
-                variation.entries.length > 0
-                  ? entryTable(variation.entries, { colorOf: variationColor }, "Variación")
-                  : EMPTY_TABLE
-              }
-              note={[
-                "Cada barra lleva su flecha y su valor con signo; el color no es la única señal.",
-                variation.hidden > 0
-                  ? `Se muestran los ${variation.entries.length} movimientos más grandes; ${variation.hidden} quedaron fuera.`
-                  : "",
-              ]
-                .filter(Boolean)
-                .join(" ")}
-              height={300}
-            />
-
-            <ChartCard
-              title="Concentración de gastos"
-              subtitle={`Pareto · ${periodName}`}
-              option={
-                pareto.entries.length > 0 ? paretoOption(pareto, { colorOf: paretoColor }) : null
-              }
-              table={
-                pareto.entries.length > 0
-                  ? entryTable(pareto.entries, { colorOf: paretoColor })
-                  : EMPTY_TABLE
-              }
-              note={excludedNote(pareto.excluded, "Sin acumular")}
-              height={300}
-            />
-          </div>
-        </>
       )}
+
+      <ChartCard
+        title="Gastos principales sobre ingresos"
+        subtitle={`% sobre ingresos · ${periodName}`}
+        option={
+          shareEntries.length > 0
+            ? horizontalBarOption(shareEntries, {
+                colorOf: shareColor,
+                unit: "porcentaje",
+              })
+            : null
+        }
+        table={
+          shareEntries.length > 0
+            ? entryTable(shareEntries, { colorOf: shareColor, unit: "porcentaje" }, "% ingresos")
+            : EMPTY_TABLE
+        }
+        warnings={expenses.warnings}
+        note={expensesEmptyNote}
+        height={300}
+      />
+
+      <div className="grid grid-cols-2 gap-4">
+        <ChartCard
+          title="Variación contra el periodo anterior"
+          subtitle={periodName}
+          option={variation.entries.length > 0 ? variationBarOption(variation.entries) : null}
+          table={
+            variation.entries.length > 0
+              ? entryTable(variation.entries, { colorOf: variationColor }, "Variación")
+              : EMPTY_TABLE
+          }
+          note={[
+            "Cada barra lleva su flecha y su valor con signo; el color no es la única señal.",
+            expensesEmptyNote ?? "",
+            variation.hidden > 0
+              ? `Se muestran los ${variation.entries.length} movimientos más grandes; ${variation.hidden} quedaron fuera.`
+              : "",
+          ]
+            .filter(Boolean)
+            .join(" ")}
+          height={300}
+        />
+
+        <ChartCard
+          title="Concentración de gastos"
+          subtitle={`Pareto · ${periodName}`}
+          option={pareto.entries.length > 0 ? paretoOption(pareto, { colorOf: paretoColor }) : null}
+          table={
+            pareto.entries.length > 0
+              ? entryTable(pareto.entries, { colorOf: paretoColor })
+              : EMPTY_TABLE
+          }
+          note={expensesEmptyNote ?? excludedNote(pareto.excluded, "Sin acumular")}
+          height={300}
+        />
+      </div>
     </div>
   );
 }
@@ -359,7 +368,7 @@ function TransformedCard({
   return (
     <ChartCard
       title={label}
-      subtitle="Todas las series de la comparación"
+      subtitle="Todas las series marcadas"
       option={series.length > 0 ? seriesOptionFor(shape, series, optionContext) : null}
       table={seriesTableFor(shape, series, optionContext)}
       warnings={[...bundle.warnings, ...series.flatMap((entry) => entry.warnings ?? [])]}

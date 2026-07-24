@@ -93,12 +93,10 @@ English; the Spanish name goes in `label`/`title`.
 
 **Components.** Reusable primitives live in `components/ui/` — prefer them over ad-hoc
 markup. Module-specific compositions live in `components/<module>/` (currently
-`components/profit-loss/`: the PyG filter toolbar + "Comparar" box, visual-only).
-`ModuleTabs` renders a module's toolbar between the tabs and the content panel when one
-exists (only PyG today); `ActiveClient` shows the client name in the header for PyG.
-Filter lists sourced from an uploaded Excel (cuentas, centros de costo) render empty
-states until data loads. PyG › Datos now loads real Excel data: `lib/profit-loss/`
-holds the pure parse/derive/export layer plus Dexie (IndexedDB) persistence, and
+`components/profit-loss/`). `ModuleTabs` renders a module's toolbar between the tabs and
+the content panel when one exists (only PyG today); `ActiveClient` shows the client name
+in the header for PyG. PyG › Datos now loads real Excel data: `lib/profit-loss/` holds
+the pure parse/derive/export layer plus Dexie (IndexedDB) persistence, and
 `PygDataProvider` — mounted in the dashboard layout — shares `dataset`/`edits`/
 `frequency` between the header (`ActiveClient`) and the Datos content. `DatosView`
 renders the Estado de Resultados table (account tree, sortable months + Total, cell
@@ -111,36 +109,91 @@ upload modal (`cost-center-upload-modal.tsx`) accepts several files at once (mon
 sucursal statements + the annual `consolidado`), grouped by each file's internal
 `Centro de Costo:` line — never by filename (the real exports prove filenames unreliable).
 `workspace.ts` assembles them into a multi-dataset workspace (Dexie v2 + a `meta` singleton)
-and validates cuadres; `CostCenterTabs` switches between a computed **Consolidado** (sum of
-the monthly centers, read-only), each editable center, and an annual read-only **Sin centro
-de costo** (from the consolidado). `parse.ts` now routes consolidated files via
+and validates cuadres. `parse.ts` routes consolidated files via
 `parseWorkbook`/`parseConsolidatedWorkbook` instead of rejecting them; the multi-center
 download writes one sheet per center + the Consolidado (`buildMultiCenterWorkbook`).
+**Account ficha:** each account row exposes a hover "ficha" trigger (own column, `sticky
+right-0` so it survives horizontal scroll) that opens `AccountDetailPanel` in a `SidePanel`.
+The panel runs ONE analytics query for the account and formats `buildAccountDetail`
+(`lib/profit-loss/charts/account-detail.ts`, pure + tested): total, active-vs-covered periods,
+average of active periods, best period, share of parent, last-period variation, plan level. It
+inherits the engine's coverage (a `null` never counts as `0`), follows the active frequency (no
+chart in Anual), reuses `barOption`+`ChartCard`, and skips only the derived «Utilidad» row.
+
+**PyG's filter bar is the module's only selection surface.** `pyg-toolbar.tsx` renders, in
+order, Cuenta contable · Nivel · Centro de costo · Periodo, "Ver por" pinned right, and an
+active-filter chip strip (`active-filter-chips.tsx`) below — reflected identically by Datos,
+Gráficos and Análisis, with no second place (no "Comparar" box, no Datos-only center pills) to
+pick the same things differently. The comparison axis is never declared: marking several
+accounts and/or several centers is itself what produces a comparison, so `lib/profit-loss/
+filters.ts` holds one flat `PygFilters` (`codes`/`centerIds`/`periods`), pure toggles kept in
+universe order (not click order), `sanitizeFilters` (pruned on read, never in an effect) and
+`resolveActiveCenterId`/`canEditActiveCenter` — the center Datos reads and edits is _derived_:
+none or several centers marked resolves to the Consolidado (read-only), exactly one resolves to
+that center. `center-filter.tsx` and `period-filter.tsx` render the last two dropdowns;
+`center-filter.tsx` renders nothing in single-statement mode. Marking accounts also intersects
+every structural card's fixed universe (composition, ranking, cascada, Análisis' three defaults)
+instead of being ignored by them, and marking periods bounds Datos' visible columns (its Total
+column stays the full-year sum regardless, relabeled "Total año" while a period mark is active).
+`PygDataProvider` owns the filters and never imports from `charts/`.
 
 **Charts.** `lib/profit-loss/analytics/` is the pure engine (series with coverage, the
 temporal/structure/variation transforms). Everything above it is also pure and tested:
 `lib/charts/` holds the eight-slot palette + mark constants (`colorForEntity` is the only way a
 series gets a color) and the `ChartOption` types this app writes — declared locally so `lib/`
 never imports the renderer; `lib/profit-loss/charts/` holds `sources.ts` (workspace views →
-`AnalyticsSource`, identity taken from the VIEW), `selection.ts` (selection → `SeriesQuery`,
-plus sanitize), `option.ts` (one builder per chart type, `Series[]` → option) and `presets.ts`
-(the default views, built through the same `toSeriesQuery` as Comparar). Components are mount
-only: `components/ui/chart.tsx` is the sole `echarts.init` caller (partial imports from
-`echarts/core`, SVG renderer), `PygAnalyticsProvider` (nested inside `PygDataProvider`) holds
-the in-memory selection behind `usePygAnalytics()`, and `components/profit-loss/charts/` renders
-the cards. **If a chart component grows logic worth testing, that logic belongs in `lib/`.**
-Two invariants are load-bearing: no chart declares two `yAxis` (the `ChartOption` type forbids
-it), and the palette never cycles — queries cap at `CHART_MAX_SERIES` (8) and the engine reports
-what it truncated.
+`AnalyticsSource`, identity taken from the VIEW), `selection.ts` (`PygFilters` → `SeriesQuery`
+and → color resolver — no dimension/cross model, the axis is read off which lists are
+populated), `option.ts` (one builder per chart type, `Series[]` → option) and `presets.ts` (the
+default views, built through the same `toSeriesQuery`/`presetQuery` every card uses, plus
+`intersectWithMarked` for the structural ones). Components are mount only:
+`components/ui/chart.tsx` is the sole `echarts.init` caller (partial imports from
+`echarts/core`, SVG renderer), `PygAnalyticsProvider` (nested inside `PygDataProvider`) now
+holds only the presentation half — `transform`/`chartType`/`sources`/`colorOf`/`runQuery` — and
+`components/profit-loss/charts/` renders the cards. **If a chart component grows logic worth
+testing, that logic belongs in `lib/`.** Two invariants are load-bearing: no chart declares two
+`yAxis` (the `ChartOption` type forbids it), and the palette never cycles — queries cap at
+`CHART_MAX_SERIES` (8) and the engine reports what it truncated.
 
-**Design tokens.** Colors and fonts are defined once in `app/globals.css`'s
-`@theme` block (`brand`, `brand-soft`, `canvas`, `surface`, `border`, `ink`,
-`muted`, `faint`) and consumed as Tailwind utilities (`bg-brand`, `text-muted`, …).
-Prefer these tokens over hardcoded hex/inline styles. Fonts are IBM Plex Sans/Mono
-loaded via `next/font` in the root layout; icons come from `lucide-react`.
+## Design system
+
+Tokens are defined **once** in `app/globals.css`'s `@theme` block and consumed as Tailwind
+utilities. README's "Sistema visual" has the full table; the normative rules for writing new
+UI are:
+
+- **Token or primitive first, always.** Reach for `components/ui/*` and a `@theme` token before
+  writing markup. **Never** hardcode a hex or an inline color; **never** invent a spacing/radius
+  scale — reuse what the neighbours use.
+- **Palette** (`--color-*`): `brand`/`brand-hover`/`brand-soft` (primary action, active), `canvas`
+  (app bg) vs `surface` (cards/tables) vs `surface-header`/`surface-muted`/`surface-sunken`,
+  `border`/`border-soft`/`border-faint` (increasingly faint separators), the ink ramp
+  `ink`→`ink-soft`→`muted`→`faint`→`faintest`, and `warning` for cuadre notices.
+- **`positive`/`negative` are the SIGN of a value, never a series color.** They never travel
+  alone: always with a `▲`/`▼` glyph and the signed value, because color alone is not a reading
+  for everyone. `zero` is only the `–` of an empty cell.
+- **Type:** IBM Plex Sans (`font-sans`); IBM Plex Mono (`font-mono`) for figures, account codes
+  and editable values. **Every number carries `tabular-nums`.** Sizing is fixed px (desktop-only
+  density), not `rem`. Micro-labels are `uppercase tracking-[0.5px] font-semibold text-faint`.
+- **Shape:** radii `13px` card/table/panel · `9px` toolbar control/button · `rounded-full`
+  chip/badge. Control heights: toolbar `34px`, button `38px`/`h-8`. Shadows are always
+  `rgba(15,23,42,…)`, never pure black. Icons from `lucide-react`.
+- **Charts consume `lib/charts/palette.ts` only** — `colorForEntity` is the one way a series gets
+  a color, the eight slots never re-order or cycle, and no option builder writes a hex. The
+  palette hexes deliberately mirror `@theme` (a canvas can't resolve a CSS var); that mirror is
+  the single allowed duplication.
+
+**Reusable side panel.** `components/ui/side-panel.tsx` is a right-anchored, non-modal drawer
+(no scrim, Escape/outside-click to close, focus in on open and back to the opener on close). It's
+what the PyG account ficha mounts on; reuse it for any future lateral detail view rather than
+building another.
 
 ## Design source
 
-The UI is translated from a Claude Design file, "Dashboard LiderPlus.dc.html"
-(claude.ai/design project `1fed77ae-29ff-439e-a0d1-f01e3b3abe5e`). Approved specs
-live under `docs/superpowers/specs/`.
+The UI was translated from a Claude Design file, "Dashboard LiderPlus.dc.html"
+(claude.ai/design project `1fed77ae-29ff-439e-a0d1-f01e3b3abe5e`).
+
+**Specs live in OpenSpec, not `docs/`.** Every non-trivial change is specified in `openspec/`
+before code: `openspec/changes/<name>/` holds the in-flight proposal/design/specs/tasks, and
+`openspec/specs/<capability>/` holds the current spec a change archives into. Use the OpenSpec
+skills (`/opsx:propose`, `/opsx:apply`, `/opsx:archive`) and `openspec validate <name>`. The
+older `docs/superpowers/specs/` tree is historical only — do not add new specs there.

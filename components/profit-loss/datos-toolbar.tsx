@@ -5,27 +5,21 @@ import { type ReactNode, useCallback, useState } from "react";
 import { InfoTip } from "@/components/ui/info-tip";
 import { cn } from "@/lib/cn";
 import { db } from "@/lib/profit-loss/db";
-import { CostCenterTabs } from "./cost-center-tabs";
 import { CostCenterUploadModal } from "./cost-center-upload-modal";
 import { usePygData } from "./pyg-data-provider";
 
 /**
- * Datos-tab action bar, rendered under the FILTROS row for Pérdidas y Ganancias › Datos.
- * Left: the "Centro de costos" selector (multi-center only). Right: the Excel actions —
- * upload, a download menu, and an accepted-files info tip. Tree depth is controlled by the
- * shared "Nivel" filter in the FILTROS row (see PygToolbar).
+ * Datos-tab action bar, rendered under the FILTROS row for Pérdidas y Ganancias › Datos: the
+ * Excel actions — upload, a download menu, and an accepted-files info tip. Which center Datos
+ * shows is the "Centro de costo" filter's job now (in the shared FILTROS row); tree depth is the
+ * "Nivel" filter's (see PygToolbar) — this bar carries no selector of its own.
  */
 export function DatosToolbar() {
-  const { mode, views, activeCenterId, setActiveCenter } = usePygData();
   const [uploadOpen, setUploadOpen] = useState(false);
 
   return (
-    <div className="flex shrink-0 flex-wrap items-center gap-2.5 border-b border-border bg-surface-sunken px-7 py-2.5">
-      {mode === "multi" && (
-        <CostCenterTabs views={views} activeId={activeCenterId} onSelect={setActiveCenter} />
-      )}
-
-      <div className="ml-auto flex items-center gap-2.5">
+    <div className="flex shrink-0 flex-wrap items-center justify-end gap-2.5 border-b border-border bg-surface-sunken px-7 py-2.5">
+      <div className="flex items-center gap-2.5">
         <button
           type="button"
           onClick={() => setUploadOpen(true)}

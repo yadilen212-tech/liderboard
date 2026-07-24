@@ -5,6 +5,9 @@ import { MONTHS_SHORT_ES } from "@/lib/date";
 import type { DatosGrid, DatosRow, DatosSort, DatosSortKey } from "@/lib/profit-loss/datos-types";
 import { toDatosGrid } from "@/lib/profit-loss/derive";
 import { focusAccounts } from "@/lib/profit-loss/filter";
+import { CONSOLIDADO_ID } from "@/lib/profit-loss/filters";
+import type { Frequency } from "@/lib/profit-loss/types";
+import { AccountDetailPanel } from "./account-detail-panel";
 import { CellEditor, type EditorAnchor } from "./cell-editor";
 import { flattenSorted } from "./datos-utils";
 import { NoticeBanner } from "./notice-banner";
@@ -29,8 +32,9 @@ const EMPTY_GRID: DatosGrid = {
  * Excel via PygDataProvider. Cell editing/commenting is MONTHLY-VIEW ONLY (see
  * README, "Edición y frecuencias") — aggregated cells are read-only sums.
  *
- * In multi-center mode it renders <CostCenterTabs> above the table; editing is gated to
- * the active view being an editable center (Consolidado and Sin-centro are read-only).
+ * Which center it shows and whether it can be edited both come from the shared "Centro de
+ * costo" filter (`canEdit`, derived: Consolidado and several centers marked are read-only); the
+ * "Cuenta contable" filter focuses which rows show and the "Periodo" filter which columns do.
  */
 export function DatosView() {
   const {
@@ -39,10 +43,10 @@ export function DatosView() {
     frequency,
     allowed,
     saveEdit,
-    views,
     activeCenterId,
+    canEdit,
+    filters,
     warnings,
-    selectedAccounts,
     collapsed,
     toggleCollapsed,
   } = usePygData();
@@ -50,6 +54,9 @@ export function DatosView() {
   const [sort, setSort] = useState<DatosSort | null>(null);
   const [editing, setEditing] = useState<EditingState | null>(null);
   const [warningsDismissed, setWarningsDismissed] = useState(false);
+  // Which account's ficha is open. Memory only, like the analytics selection: it means nothing
+  // without the workspace that produced it.
+  const [detailCode, setDetailCode] = useState<string | null>(null);
 
   // A newly loaded dataset can be coarser than the current view (its base floors the
   // options), but the provider resets `frequency` to the base one render later. Until it
@@ -62,16 +69,25 @@ export function DatosView() {
     () => (dataset ? toDatosGrid(dataset, edits, effectiveFrequency) : EMPTY_GRID),
     [dataset, edits, effectiveFrequency],
   );
+  const markedCodes = useMemo(() => new Set(filters.codes), [filters.codes]);
   // Account focus decides which rows show; amounts (and Utilidad) are untouched. Depth is
   // handled by the collapse state (`collapsed`, from the "Nivel" filter + per-row toggles).
   const filteredRows = useMemo(
-    () => focusAccounts(grid.rows, selectedAccounts),
-    [grid.rows, selectedAccounts],
+    () => focusAccounts(grid.rows, markedCodes),
+    [grid.rows, markedCodes],
   );
   const visibleRows = useMemo(
     () => flattenSorted(filteredRows, collapsed, sort),
     [filteredRows, collapsed, sort],
   );
+  // The "Periodo" filter bounds which columns render; the real index travels through so
+  // editing still writes to the right month. No periods marked shows the whole axis.
+  const visibleColumns = useMemo(() => {
+    if (filters.periods.length === 0) {
+      return grid.months.map((_, index) => index);
+    }
+    return filters.periods.map((period) => period.index).sort((a, b) => a - b);
+  }, [filters.periods, grid.months]);
 
   // A newly loaded workspace should surface its own warnings even if the previous banner
   // was dismissed.
@@ -87,9 +103,13 @@ export function DatosView() {
     );
   }, [grid.months.length]);
 
-  // Value edits/comments only make sense on an editable center in the concrete monthly view.
-  const activeView = views.find((v) => v.id === activeCenterId);
-  const editable = Boolean(activeView?.editable) && effectiveFrequency === "mensual";
+  // Value edits/comments only make sense on an editable center in the concrete monthly view;
+  // `canEdit` already covers the center half, this adds the frequency half (see `PygDataProvider`
+  // for why both matter — a newly loaded coarser file floors the options one render early).
+  const editable = canEdit && effectiveFrequency === "mensual";
+  const readOnlyReason = editable
+    ? null
+    : readOnlyReasonFor(filters.centerIds.length, activeCenterId, effectiveFrequency);
   const showTotal = effectiveFrequency !== "anual";
 
   const onSort = useCallback((key: DatosSortKey) => {
@@ -102,6 +122,9 @@ export function DatosView() {
     },
     [],
   );
+
+  const onOpenDetail = useCallback((code: string) => setDetailCode(code), []);
+  const onCloseDetail = useCallback(() => setDetailCode(null), []);
 
   const onSaveEdit = useCallback(
     (value: number | null, comment: string) => {
@@ -139,13 +162,19 @@ export function DatosView() {
       <DatosTable
         grid={grid}
         rows={visibleRows}
+        visibleColumns={visibleColumns}
         sort={sort}
         editable={editable}
+        readOnlyReason={readOnlyReason}
         showTotal={showTotal}
+        openDetailCode={detailCode}
         onSort={onSort}
         onToggle={toggleCollapsed}
         onEditCell={onEditCell}
+        onOpenDetail={onOpenDetail}
       />
+
+      {detailCode !== null && <AccountDetailPanel code={detailCode} onClose={onCloseDetail} />}
 
       {editing && editingRow && (
         <CellEditor
@@ -161,6 +190,28 @@ export function DatosView() {
       )}
     </div>
   );
+}
+
+/**
+ * Names why Datos is read-only, so the banner says more than "no puedes editar". Checked in the
+ * same order `resolveActiveCenterId` would: several centers marked wins over which one got
+ * resolved, since that is the more informative reason ("hay 2 marcados" beats "es Consolidado").
+ */
+function readOnlyReasonFor(
+  markedCenterCount: number,
+  activeCenterId: string,
+  effectiveFrequency: Frequency,
+): string {
+  if (markedCenterCount >= 2) {
+    return "hay varios centros de costo marcados: se muestra el Consolidado";
+  }
+  if (activeCenterId === CONSOLIDADO_ID) {
+    return "el Consolidado es de solo lectura";
+  }
+  if (effectiveFrequency !== "mensual") {
+    return "la vista no es mensual";
+  }
+  return "este centro es de solo lectura";
 }
 
 /** Cycle a column through asc → desc → unsorted; switching columns starts at asc. */

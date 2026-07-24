@@ -58,6 +58,12 @@ export interface SeriesOptionContext {
   /** Adds the year to the period labels; only when the query spans several. */
   multiYear?: boolean;
   unit?: ChartUnit;
+  /**
+   * Draw the value on top of each mark. Default true. Set false for a dense single-series
+   * evolution — twelve monthly labels overlap into texture, and the tooltip already reads a
+   * bar on hover.
+   */
+  labels?: boolean;
 }
 
 /** Charts whose axis is a set of accounts within one period. */
@@ -856,7 +862,11 @@ function barSeries(
     },
     barMaxWidth: CHART_MARK.barMaxWidth,
     emphasis: { focus: "series" },
-    label: directLabel(seriesCount <= MAX_DIRECT_LABELS, context.unit, stacked ? "inside" : "top"),
+    label: directLabel(
+      (context.labels ?? true) && seriesCount <= MAX_DIRECT_LABELS,
+      context.unit,
+      stacked ? "inside" : "top",
+    ),
     labelLayout: { hideOverlap: true },
   };
 }
@@ -878,7 +888,11 @@ function lineSeries(
     symbolSize: CHART_MARK.symbolSize,
     smooth: false,
     emphasis: { focus: "series" },
-    label: directLabel(seriesCount <= MAX_DIRECT_LABELS, context.unit, "top"),
+    label: directLabel(
+      (context.labels ?? true) && seriesCount <= MAX_DIRECT_LABELS,
+      context.unit,
+      "top",
+    ),
     labelLayout: { hideOverlap: true },
   };
 }

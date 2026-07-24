@@ -57,7 +57,7 @@ export function ModuleTabs({ slug }: { slug: string }) {
         {isPyg && <Semaforo />}
       </div>
 
-      {isPyg && <PygToolbar activeTab={activeTab.id} />}
+      {isPyg && <PygToolbar />}
       {isPyg && activeTab.id === "datos" && <DatosToolbar />}
 
       <div

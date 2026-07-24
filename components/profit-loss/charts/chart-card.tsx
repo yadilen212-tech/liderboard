@@ -23,6 +23,11 @@ export interface ChartCardProps {
   height?: number;
   /** No workspace loaded at all — the tab-wide empty state rather than a card-level one. */
   empty?: boolean;
+  /**
+   * Offer the "Ver como tabla" twin. Default true. The account ficha turns it off: its numbers
+   * already sit above the chart as metrics, and a single-series bar reads fine on its own.
+   */
+  tableToggle?: boolean;
 }
 
 /**
@@ -45,9 +50,11 @@ export const ChartCard = memo(function ChartCard({
   note,
   height = 260,
   empty = false,
+  tableToggle = true,
 }: ChartCardProps) {
   const [asTable, setAsTable] = useState(false);
   const hasSeries = Boolean(option && option.series.length > 0 && table.rows.length > 0);
+  const showToggle = hasSeries && tableToggle;
 
   return (
     <section className="flex min-w-0 flex-col overflow-hidden rounded-[13px] border border-border bg-surface">
@@ -56,7 +63,7 @@ export const ChartCard = memo(function ChartCard({
           <h3 className="truncate text-sm font-semibold text-ink">{title}</h3>
           {subtitle && <p className="mt-0.5 truncate text-[11.5px] text-muted">{subtitle}</p>}
         </div>
-        {hasSeries && (
+        {showToggle && (
           <button
             type="button"
             aria-pressed={asTable}

@@ -10,13 +10,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import {
-  db,
-  getWorkspaceMeta,
-  replaceWorkspace,
-  saveActiveCenter,
-  saveCellEdit,
-} from "@/lib/profit-loss/db";
+import { db, getWorkspaceMeta, replaceWorkspace, saveCellEdit } from "@/lib/profit-loss/db";
 import {
   allowedFrequencies,
   applyEditsToLeafAccounts,
@@ -29,16 +23,34 @@ import {
   deepestLevel,
   type AccountOption,
 } from "@/lib/profit-loss/filter";
+import {
+  canEditActiveCenter,
+  clearFilters as clearAllFilters,
+  CONSOLIDADO_ID,
+  emptyFilters,
+  resolveActiveCenterId,
+  sanitizeFilters,
+  seedCenterIds,
+  withCenterToggled,
+  withCentersCleared,
+  withCodesCleared,
+  withCodeToggled,
+  withPeriodsCleared,
+  withPeriodToggled,
+  type FilterView,
+  type PygFilters,
+} from "@/lib/profit-loss/filters";
+import { periodsForYear } from "@/lib/profit-loss/analytics/period";
+import type { PeriodRef } from "@/lib/profit-loss/analytics/types";
 import type { CellEdit, Frequency, PygDataset } from "@/lib/profit-loss/types";
 import type { BuiltWorkspace } from "@/lib/profit-loss/workspace";
 import { PygAnalyticsProvider } from "./pyg-analytics-provider";
 
 const EMPTY_EDITS: CellEdit[] = [];
 const EMPTY_DATASETS: PygDataset[] = [];
-const CONSOLIDADO_ID = "consolidado";
 const CONSOLIDADO_COLOR = "#334155";
 
-/** One entry in the "Centro de costos" selector: Consolidado, a center, or Sin-centro. */
+/** One entry in the "Centro de costos" filter: Consolidado, a center, or Sin-centro. */
 export interface CenterView {
   id: string;
   name: string;
@@ -54,12 +66,12 @@ interface PygDataValue {
   frequency: Frequency;
   allowed: Frequency[];
   setFrequency: (frequency: Frequency) => void;
-  /** "single" = a lone statement (no cost-center tabs); "multi" = a workspace of centers. */
+  /** "single" = a lone statement (no cost-center filter); "multi" = a workspace of centers. */
   mode: "single" | "multi";
   /** Selector entries (Consolidado + centers + Sin-centro); empty in single mode. */
   views: CenterView[];
+  /** The resolved center — Consolidado when none or several are marked. */
   activeCenterId: string;
-  setActiveCenter: (id: string) => void;
   commitWorkspace: (built: BuiltWorkspace) => Promise<void>;
   /** Workspace-level cuadre warnings (from meta). */
   warnings: string[];
@@ -72,12 +84,23 @@ interface PygDataValue {
   /** Depth of the deepest movement account across ALL files in the workspace; 0 with no
    * dataset. Bounds the "Nivel" filter options. */
   deepestLevel: number;
-  /** Accounts of the active view as "Cuenta contable" options; [] with no dataset. */
+  /** Accounts of the resolved view as "Cuenta contable" options; [] with no dataset. */
   accountOptions: AccountOption[];
-  /** "Cuenta contable" focus selection (empty = no filter). */
-  selectedAccounts: Set<string>;
-  toggleAccount: (code: string) => void;
-  clearAccounts: () => void;
+  /** The filter bar's single selection: marked accounts, centers and periods. */
+  filters: PygFilters;
+  toggleCode: (code: string) => void;
+  toggleCenter: (centerId: string) => void;
+  togglePeriod: (period: PeriodRef) => void;
+  /** Each dropdown's own "Quitar selección" footer button. */
+  clearCodes: () => void;
+  /** "Todos (Consolidado)" — clears only the center marks. */
+  clearCenters: () => void;
+  clearPeriods: () => void;
+  /** "Quitar todo" — clears every marked filter. */
+  clearFilters: () => void;
+  /** Whether Datos can edit the resolved center's values (one editable center marked, monthly
+   * view). Datos names WHY not, since several causes can make this false. */
+  canEdit: boolean;
   /** Datos tree collapse state; shared so the "Nivel" filter and per-row toggles agree. */
   collapsed: Set<string>;
   toggleCollapsed: (code: string) => void;
@@ -88,9 +111,12 @@ const PygDataContext = createContext<PygDataValue | null>(null);
 
 /**
  * Shared PyG data state: the active Dexie workspace (one or more datasets) + edits (live
- * queries), the selected view frequency, the active cost-center view, and the upload pipeline.
- * Mounted in the dashboard layout because the header (ActiveClient) and the module content
- * consume it from different branches.
+ * queries), the selected view frequency, the filter bar's selection (accounts, centers,
+ * periods), and the upload pipeline. Mounted in the dashboard layout because the header
+ * (ActiveClient) and the module content consume it from different branches.
+ *
+ * The filter bar's raw state and the resolved center it implies are OWNED here, not in
+ * `charts/`, so this provider never has to import from that layer (verified: it doesn't).
  */
 export function PygDataProvider({ children }: { children: ReactNode }) {
   // toArray() (NOT orderBy("order")): IndexedDB indexes exclude rows whose key is undefined,
@@ -105,19 +131,39 @@ export function PygDataProvider({ children }: { children: ReactNode }) {
   const mode: "single" | "multi" =
     views.length <= 1 && views[0]?.role === "single" ? "single" : "multi";
 
-  const [frequency, setFrequencyState] = useState<Frequency>("mensual");
-  const [selectedAccounts, setSelectedAccounts] = useState<Set<string>>(() => new Set());
-  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
-  const [activeCenterId, setActiveCenterId] = useState<string>(CONSOLIDADO_ID);
+  // Every view's own account codes (parents included) — what `sanitizeFilters` prunes a marked
+  // account against, and all this provider needs to stay out of the analytics/charts layers.
+  const filterViews = useMemo<FilterView[]>(
+    () =>
+      views.map((view) => ({
+        id: view.id,
+        editable: view.editable,
+        codes: view.dataset.accounts.map((account) => account.code),
+      })),
+    [views],
+  );
 
-  // Resolve the active view: the current id, else the persisted one, else the first view.
-  const resolvedActiveId =
-    views.find((v) => v.id === activeCenterId)?.id ??
-    (metaRow?.activeCenterId && views.some((v) => v.id === metaRow.activeCenterId)
-      ? metaRow.activeCenterId
-      : (views[0]?.id ?? CONSOLIDADO_ID));
+  const [frequency, setFrequencyState] = useState<Frequency>("mensual");
+  const [rawFilters, setRawFilters] = useState<PygFilters>(() => emptyFilters());
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
+
+  const workspaceYear = datasets.find((d) => d.year != null)?.year ?? 0;
+
+  // Sanitizing on read rather than in an effect means the filters are NEVER out of step with
+  // the workspace, the resolved center or the frequency — not even for the render in between.
+  const filterContext = useMemo(
+    () => ({ views: filterViews, year: workspaceYear, frequency }),
+    [filterViews, workspaceYear, frequency],
+  );
+  const filters = useMemo(
+    () => sanitizeFilters(rawFilters, filterContext),
+    [rawFilters, filterContext],
+  );
+
+  const resolvedActiveId = resolveActiveCenterId(filters, filterViews);
   const activeView = views.find((v) => v.id === resolvedActiveId) ?? views[0];
   const dataset = activeView?.dataset;
+  const canEdit = canEditActiveCenter(filters, filterViews) && frequency === "mensual";
 
   // Edits of the active view's dataset — for display (comments) and, on editable centers, values.
   // The synthetic Consolidado (id "consolidado") has no stored edits: they are already merged
@@ -132,8 +178,8 @@ export function PygDataProvider({ children }: { children: ReactNode }) {
   const accounts = dataset?.accounts;
   const allowed = useMemo(() => (base ? allowedFrequencies(base) : [...FREQUENCY_ORDER]), [base]);
 
-  // A NEW workspace (its set of dataset ids changed) resets to the base frequency and clears
-  // the account/level filters and tree collapse state.
+  // A NEW workspace (its set of dataset ids changed) resets to the base frequency; the filters
+  // themselves are reset by `commitWorkspace`, which is the only path that changes datasets.
   const workspaceKey = datasets.map((d) => d.id).join("|");
   useEffect(() => {
     if (base) {
@@ -141,7 +187,6 @@ export function PygDataProvider({ children }: { children: ReactNode }) {
     }
   }, [workspaceKey, base]);
   useEffect(() => {
-    setSelectedAccounts(new Set());
     setCollapsed(new Set());
   }, [workspaceKey]);
 
@@ -150,7 +195,7 @@ export function PygDataProvider({ children }: { children: ReactNode }) {
     setFrequencyState((prev) => (allowed.includes(prev) ? prev : (base ?? prev)));
   }, [resolvedActiveId, allowed, base]);
 
-  // The deepest movement account across ALL files in the workspace (not just the active
+  // The deepest movement account across ALL files in the workspace (not just the resolved
   // view) — so the Nivel options are stable across center tabs and reflect the deepest Excel.
   const deepest = useMemo(
     () => datasets.reduce((max, d) => Math.max(max, deepestLevel(d.accounts)), 0),
@@ -167,19 +212,43 @@ export function PygDataProvider({ children }: { children: ReactNode }) {
     [allowed],
   );
 
-  const toggleAccount = useCallback((code: string) => {
-    setSelectedAccounts((current) => {
-      const next = new Set(current);
-      if (next.has(code)) {
-        next.delete(code);
-      } else {
-        next.add(code);
-      }
-      return next;
-    });
-  }, []);
+  const toggleCode = useCallback(
+    (code: string) => {
+      setRawFilters(
+        withCodeToggled(
+          filters,
+          code,
+          options.map((option) => option.code),
+        ),
+      );
+    },
+    [filters, options],
+  );
 
-  const clearAccounts = useCallback(() => setSelectedAccounts(new Set()), []);
+  const toggleCenter = useCallback(
+    (centerId: string) => {
+      setRawFilters(
+        withCenterToggled(
+          filters,
+          centerId,
+          views.map((view) => view.id),
+        ),
+      );
+    },
+    [filters, views],
+  );
+
+  const togglePeriod = useCallback(
+    (period: PeriodRef) => {
+      setRawFilters(withPeriodToggled(filters, period, periodsForYear(workspaceYear, frequency)));
+    },
+    [filters, workspaceYear, frequency],
+  );
+
+  const clearCodes = useCallback(() => setRawFilters(withCodesCleared(filters)), [filters]);
+  const clearCenters = useCallback(() => setRawFilters(withCentersCleared(filters)), [filters]);
+  const clearPeriods = useCallback(() => setRawFilters(withPeriodsCleared(filters)), [filters]);
+  const clearFilters = useCallback(() => setRawFilters(clearAllFilters()), []);
 
   const toggleCollapsed = useCallback((code: string) => {
     setCollapsed((current) => {
@@ -200,14 +269,11 @@ export function PygDataProvider({ children }: { children: ReactNode }) {
     [accounts],
   );
 
-  const setActiveCenter = useCallback((id: string) => {
-    setActiveCenterId(id);
-    void saveActiveCenter(id);
-  }, []);
-
   const commitWorkspace = useCallback(async (built: BuiltWorkspace) => {
     await replaceWorkspace(built.datasets, built.meta, built.commentsByDataset);
-    setActiveCenterId(built.meta.activeCenterId);
+    // `replaceWorkspace` already persisted `built.meta.activeCenterId`; this only seeds the
+    // in-memory filter selection from it (a real center marks it, the Consolidado marks none).
+    setRawFilters({ ...emptyFilters(), centerIds: seedCenterIds(built.meta.activeCenterId) });
   }, []);
 
   const saveEdit = useCallback(
@@ -236,15 +302,20 @@ export function PygDataProvider({ children }: { children: ReactNode }) {
       mode,
       views,
       activeCenterId: resolvedActiveId,
-      setActiveCenter,
       commitWorkspace,
       warnings: metaRow?.warnings ?? [],
       saveEdit,
       deepestLevel: deepest,
       accountOptions: options,
-      selectedAccounts,
-      toggleAccount,
-      clearAccounts,
+      filters,
+      toggleCode,
+      toggleCenter,
+      togglePeriod,
+      clearCodes,
+      clearCenters,
+      clearPeriods,
+      clearFilters,
+      canEdit,
       collapsed,
       toggleCollapsed,
       setExpandLevel,
@@ -258,23 +329,28 @@ export function PygDataProvider({ children }: { children: ReactNode }) {
       mode,
       views,
       resolvedActiveId,
-      setActiveCenter,
       commitWorkspace,
       metaRow?.warnings,
       saveEdit,
       deepest,
       options,
-      selectedAccounts,
-      toggleAccount,
-      clearAccounts,
+      filters,
+      toggleCode,
+      toggleCenter,
+      togglePeriod,
+      clearCodes,
+      clearCenters,
+      clearPeriods,
+      clearFilters,
+      canEdit,
       collapsed,
       toggleCollapsed,
       setExpandLevel,
     ],
   );
 
-  // The analytics selection lives in its own file but inside this tree, so the layout keeps a
-  // single mount point and `CompareBar` and the content panel still read one state.
+  // The analytics provider lives in its own file but inside this tree, so the layout keeps a
+  // single mount point and the content panel still reads one state for what to draw.
   return (
     <PygDataContext.Provider value={value}>
       <PygAnalyticsProvider allEdits={allEdits}>{children}</PygAnalyticsProvider>

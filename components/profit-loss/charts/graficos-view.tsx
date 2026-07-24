@@ -20,13 +20,19 @@ import {
   compositionQuery,
   excludedNote,
   EXPENSE_ROOT,
+  intersectWithMarked,
   lastCoveredIndex,
   leavesOf,
   presetQuery,
   REVENUE_ROOT,
   topEntries,
 } from "@/lib/profit-loss/charts/presets";
-import { activeSource, codeColorResolver } from "@/lib/profit-loss/charts/selection";
+import {
+  activeSource,
+  codeColorResolver,
+  colorResolver,
+  toSeriesQuery,
+} from "@/lib/profit-loss/charts/selection";
 import { usePygAnalytics } from "../pyg-analytics-provider";
 import { usePygData } from "../pyg-data-provider";
 import { ChartCard } from "./chart-card";
@@ -35,23 +41,29 @@ import { WaterfallCard } from "./waterfall-card";
 
 const EMPTY_TABLE: ChartTable = { columns: [], rows: [] };
 
+/** What the evolution card falls back to with no account marked — a stable reference so the
+ * queries built from it don't invalidate every render. */
+const DEFAULT_EVOLUTION_CODES = [REVENUE_ROOT, EXPENSE_ROOT];
+
 /**
  * Gráficos answers *how much and of what*: amounts per period, comparisons between accounts
- * and centers, composition of a total. No transformation selector — that is Análisis.
+ * and centers, composition of a total. No transformation selector — that is Análisis, and no
+ * shape selector either — every card here is always bars (or the pie/ranking shape it owns).
  *
- * With an Excel loaded it shows something useful before the user configures anything, because
- * a blank panel next to a loaded file hands the reader the job of guessing what can be asked.
- * The presets are ordinary queries, the same route `Comparar` takes; picking a dimension
- * replaces the comparison card and keeps the stat tiles, and «Nada» brings the preset back.
+ * With an Excel loaded it shows something useful before the user marks anything, because a
+ * blank panel next to a loaded file hands the reader the job of guessing what can be asked. The
+ * filter bar's marks feed every card at once: the evolution card draws whatever accounts (and
+ * centers) are marked, and falls back to Ingresos contra Costos y Gastos when nothing is: there
+ * is no separate "Comparación" card living beside it.
  */
 export function GraficosView() {
-  const { dataset } = usePygData();
-  const { context, comparing, comparison, colorOf, selection, runQuery } = usePygAnalytics();
+  const { dataset, filters } = usePygData();
+  const { context, runQuery } = usePygAnalytics();
   const source = activeSource(context);
 
   const totals = useMemo(
-    () => runQuery(presetQuery([REVENUE_ROOT, EXPENSE_ROOT], context)),
-    [runQuery, context],
+    () => runQuery(presetQuery(DEFAULT_EVOLUTION_CODES, context, { periods: filters.periods })),
+    [runQuery, context, filters.periods],
   );
   // ONE period for the whole tab. Every card names it in its subtitle, so they cannot be
   // allowed to each pick their own: a statement whose revenue stops in July but keeps booking
@@ -65,31 +77,56 @@ export function GraficosView() {
   const revenue = amountOf(totals, REVENUE_ROOT, period);
   const expense = amountOf(totals, EXPENSE_ROOT, period);
   const result = revenue !== null && expense !== null ? revenue - expense : null;
-  const totalsColor = useMemo(() => codeColorResolver([REVENUE_ROOT, EXPENSE_ROOT]), []);
 
-  // Composition of revenue over the movement accounts under "4". The cap is lifted here
-  // because `toPieSlices` folds its own tail into «Otros» and sets the negative Rebajas row
-  // aside — truncating at eight first would hide accounts the pie was going to group anyway.
+  // The evolution card draws the marked accounts (and centers); with nothing marked it falls
+  // back to Ingresos vs Costos y Gastos — the same two totals the stat tiles read.
+  const evolutionCodes = filters.codes.length > 0 ? filters.codes : DEFAULT_EVOLUTION_CODES;
+  const evolutionFilters = useMemo(
+    () => ({ ...filters, codes: evolutionCodes }),
+    [filters, evolutionCodes],
+  );
+  const evolutionQuery = useMemo(
+    () => toSeriesQuery(evolutionFilters, context),
+    [evolutionFilters, context],
+  );
+  const evolution = useMemo(() => runQuery(evolutionQuery), [runQuery, evolutionQuery]);
+  const evolutionColor = useMemo(
+    () => colorResolver(evolutionFilters, context),
+    [evolutionFilters, context],
+  );
+  const evolutionContext = { colorOf: evolutionColor, periods: evolution.periods };
+
+  // Composición y ranking conservan su pregunta fija, pero intersecan su universo con las
+  // cuentas marcadas — una cuenta de gasto marcada vacía la composición de ingresos a propósito.
+  const revenueLeaves = leavesOf(source, REVENUE_ROOT);
+  const compositionCodes = intersectWithMarked(revenueLeaves, filters.codes);
   const composition = useMemo(
-    () => runQuery(compositionQuery(leavesOf(source, REVENUE_ROOT), context)),
-    [runQuery, source, context],
+    () => runQuery(compositionQuery(compositionCodes, context, { periods: filters.periods })),
+    [runQuery, compositionCodes, context, filters.periods],
   );
   const slices = useMemo(() => toPieSlices(amountsAt(composition, period)), [composition, period]);
   const sliceColor = useMemo(() => entryColor(slices.slices.map((slice) => slice.code)), [slices]);
+  const compositionEmptyNote =
+    revenueLeaves.length > 0 && compositionCodes.length === 0
+      ? "El filtro de cuentas marcadas no incluye ninguna cuenta de Ingresos."
+      : undefined;
 
   // Ranking of expenses: sorted BEFORE the cut, so the largest cannot fall off the list.
+  const expenseLeaves = leavesOf(source, EXPENSE_ROOT);
+  const rankingCodes = intersectWithMarked(expenseLeaves, filters.codes);
   const expenses = useMemo(
-    () => runQuery(compositionQuery(leavesOf(source, EXPENSE_ROOT), context)),
-    [runQuery, source, context],
+    () => runQuery(compositionQuery(rankingCodes, context, { periods: filters.periods })),
+    [runQuery, rankingCodes, context, filters.periods],
   );
   const ranking = useMemo(() => topEntries(amountsAt(expenses, period)), [expenses, period]);
   const rankingColor = useMemo(
     () => entryColor(ranking.entries.map((entry) => entry.code)),
     [ranking],
   );
-
-  const comparisonSeries = comparison?.series ?? [];
-  const comparisonContext = { colorOf, periods: comparison?.periods ?? [] };
+  const rankingEmptyNote =
+    expenseLeaves.length > 0 && rankingCodes.length === 0
+      ? "El filtro de cuentas marcadas no incluye ninguna cuenta de Costos y Gastos."
+      : undefined;
 
   if (!dataset) {
     return (
@@ -123,46 +160,25 @@ export function GraficosView() {
       </div>
 
       {/* Primero la historia completa —de dónde salió el ingreso y en qué se fue—, y recién
-          después las comparaciones, que responden preguntas más finas. */}
+          después la evolución, que responde una pregunta más fina. */}
       <WaterfallCard
         source={source}
         frequency={context.frequency}
-        periods={selection.periods.length > 0 ? selection.periods : undefined}
+        periods={filters.periods.length > 0 ? filters.periods : undefined}
       />
 
-      {comparing && comparison ? (
-        <ChartCard
-          title="Comparación"
-          subtitle={`${comparisonSeries.length} ${comparisonSeries.length === 1 ? "serie" : "series"} · ${periodName}`}
-          option={
-            comparisonSeries.length > 0
-              ? seriesOptionFor(selection.chartType, comparisonSeries, comparisonContext)
-              : null
-          }
-          table={seriesTableFor(selection.chartType, comparisonSeries, comparisonContext)}
-          warnings={comparison.warnings}
-          height={300}
-        />
-      ) : (
-        <ChartCard
-          title="Ingresos contra Costos y Gastos"
-          subtitle="Evolución por periodo"
-          option={
-            totals.series.length > 0
-              ? seriesOptionFor("barras", totals.series, {
-                  colorOf: totalsColor,
-                  periods: totals.periods,
-                })
-              : null
-          }
-          table={seriesTableFor("barras", totals.series, {
-            colorOf: totalsColor,
-            periods: totals.periods,
-          })}
-          warnings={totals.warnings}
-          height={300}
-        />
-      )}
+      <ChartCard
+        title={filters.codes.length > 0 ? "Comparación" : "Ingresos contra Costos y Gastos"}
+        subtitle={`${evolution.series.length} ${evolution.series.length === 1 ? "serie" : "series"} · ${periodName}`}
+        option={
+          evolution.series.length > 0
+            ? seriesOptionFor("barras", evolution.series, evolutionContext)
+            : null
+        }
+        table={seriesTableFor("barras", evolution.series, evolutionContext)}
+        warnings={evolution.warnings}
+        height={300}
+      />
 
       <div className="grid grid-cols-2 gap-4">
         <ChartCard
@@ -179,7 +195,7 @@ export function GraficosView() {
               : EMPTY_TABLE
           }
           warnings={composition.warnings}
-          note={excludedNote(slices.excluded)}
+          note={compositionEmptyNote ?? excludedNote(slices.excluded)}
           height={280}
         />
 
@@ -198,9 +214,10 @@ export function GraficosView() {
           }
           warnings={expenses.warnings}
           note={
-            ranking.hidden > 0
+            rankingEmptyNote ??
+            (ranking.hidden > 0
               ? `Se muestran las ${ranking.entries.length} cuentas más grandes; ${ranking.hidden} quedaron fuera.`
-              : undefined
+              : undefined)
           }
           height={280}
         />

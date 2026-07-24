@@ -8,8 +8,8 @@
  */
 import { CHART_MAX_SERIES } from "@/lib/charts/palette";
 import type { AmountEntry } from "../analytics/structure";
-import type { AnalyticsSource, SeriesBundle, SeriesQuery } from "../analytics/types";
-import { emptySelection, toSeriesQuery, type SelectionContext } from "./selection";
+import type { AnalyticsSource, PeriodRef, SeriesBundle, SeriesQuery } from "../analytics/types";
+import type { SelectionContext } from "./selection";
 
 /** The two roots every statement has; the stat tiles and the evolution card read them. */
 export const REVENUE_ROOT = "4";
@@ -31,24 +31,52 @@ const UNCAPPED = Number.MAX_SAFE_INTEGER;
 
 export interface PresetQueryOptions {
   limit?: number;
+  /** Marked periods that narrow the eje; omit (or empty) for the whole axis of the frequency —
+   * the same "acota, no multiplica" rule the filter bar's periods apply everywhere else. */
+  periods?: readonly PeriodRef[];
 }
 
-/** A preset selection is a `cuentas` comparison over fixed codes — nothing more. */
+/**
+ * A preset query over an explicit, already-decided list of codes — no defaulting, so a card
+ * that intersected its universe down to nothing (see `intersectWithMarked`) gets back a query
+ * that draws nothing, not the engine's generic Ingresos fallback.
+ */
 export function presetQuery(
   codes: string[],
   context: SelectionContext,
   options: PresetQueryOptions = {},
 ): SeriesQuery {
-  const query = toSeriesQuery(
-    { ...emptySelection(context.workspaceKey), dimension: "cuentas", codes },
-    context,
-  );
-  return { ...query, limit: options.limit ?? CHART_MAX_SERIES };
+  return {
+    codes,
+    centerIds: [context.activeCenterId],
+    years: [context.year],
+    frequency: context.frequency,
+    ...(options.periods && options.periods.length > 0 ? { periods: [...options.periods] } : {}),
+    limit: options.limit ?? CHART_MAX_SERIES,
+  };
 }
 
 /** Query for a composition or ranking card: every leaf, so the card can do its own reduction. */
-export function compositionQuery(codes: string[], context: SelectionContext): SeriesQuery {
-  return presetQuery(codes, context, { limit: UNCAPPED });
+export function compositionQuery(
+  codes: string[],
+  context: SelectionContext,
+  options: Pick<PresetQueryOptions, "periods"> = {},
+): SeriesQuery {
+  return presetQuery(codes, context, { ...options, limit: UNCAPPED });
+}
+
+/**
+ * A card's fixed universe narrowed to the accounts marked in "Cuenta contable": a marked
+ * ancestor keeps every leaf under it, a marked leaf keeps only itself. No marks is a no-op — the
+ * card keeps its whole universe, exactly as it drew before the filter reached it.
+ */
+export function intersectWithMarked(universe: string[], markedCodes: readonly string[]): string[] {
+  if (markedCodes.length === 0) {
+    return universe;
+  }
+  return universe.filter((code) =>
+    markedCodes.some((marked) => code === marked || code.startsWith(`${marked}.`)),
+  );
 }
 
 /** Direct children of an account, in file order; `[]` when it has none. */

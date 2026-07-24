@@ -5,7 +5,9 @@ import {
   ArrowUp,
   ChevronsUpDown,
   FileSpreadsheet,
+  Lock,
   MousePointerClick,
+  PanelRight,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -18,12 +20,20 @@ import type { FlatRow } from "./datos-utils";
 export interface DatosTableProps {
   grid: DatosGrid;
   rows: FlatRow[];
+  /** Real column indices to render, in order — the "Periodo" filter's doing; every index when
+   * nothing is marked. */
+  visibleColumns: number[];
   sort: DatosSort | null;
   editable: boolean;
+  /** Why editing is off, named for the banner; `null` while `editable` is true. */
+  readOnlyReason: string | null;
   showTotal: boolean;
+  /** Account whose ficha is open, so its row can stay marked; `null` when none is. */
+  openDetailCode: string | null;
   onSort: (key: DatosSortKey) => void;
   onToggle: (code: string) => void;
   onEditCell: (code: string, col: number, anchor: EditorAnchor, valueEditable: boolean) => void;
+  onOpenDetail: (code: string) => void;
 }
 
 /** Two sort keys point at the same column when both are the name / total sentinels. */
@@ -38,14 +48,21 @@ function sameKey(a: DatosSortKey, b: DatosSortKey): boolean {
 export function DatosTable({
   grid,
   rows,
+  visibleColumns,
   sort,
   editable,
+  readOnlyReason,
   showTotal,
+  openDetailCode,
   onSort,
   onToggle,
   onEditCell,
+  onOpenDetail,
 }: DatosTableProps) {
   const accountCount = rows.filter((flat) => !flat.row.isResult).length;
+  // "Total" stays the full year even when a period mark bounds the columns — relabeled so
+  // nobody reads it as the sum of what happens to be visible.
+  const totalLabel = visibleColumns.length < grid.months.length ? "Total año" : "Total";
 
   return (
     <div className="mb-4 overflow-hidden rounded-[13px] border border-border bg-surface">
@@ -92,15 +109,15 @@ export function DatosTable({
                   >
                     Cuenta
                   </SortableTh>
-                  {grid.months.map((month, col) => (
+                  {visibleColumns.map((col) => (
                     <SortableTh
-                      key={month}
+                      key={col}
                       align="right"
                       active={sort ? sameKey(sort.key, { col }) : false}
                       dir={sort?.dir}
                       onClick={() => onSort({ col })}
                     >
-                      {month}
+                      {grid.months[col]}
                     </SortableTh>
                   ))}
                   {showTotal && (
@@ -111,9 +128,13 @@ export function DatosTable({
                       onClick={() => onSort("total")}
                       className="border-l border-border"
                     >
-                      Total
+                      {totalLabel}
                     </SortableTh>
                   )}
+                  {/* Pinned above AND to the right, so it stacks over the other sticky headers. */}
+                  <th className="sticky right-0 top-0 z-[3] w-[62px] border-b border-l border-border bg-surface-header px-2 py-2.5">
+                    <span className="sr-only">Ficha</span>
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -123,11 +144,13 @@ export function DatosTable({
                     row={flat.row}
                     hasChildren={flat.hasChildren}
                     isCollapsed={flat.isCollapsed}
-                    monthsCount={grid.months.length}
+                    visibleColumns={visibleColumns}
                     editable={editable}
                     showTotal={showTotal}
+                    detailOpen={openDetailCode === flat.row.code}
                     onToggle={onToggle}
                     onEditCell={onEditCell}
+                    onOpenDetail={onOpenDetail}
                   />
                 ))}
               </tbody>
@@ -149,12 +172,23 @@ export function DatosTable({
               />
               Celda con comentario
             </LegendItem>
-            {editable && (
+            {editable ? (
               <LegendItem>
                 <MousePointerClick size={13} />
                 Clic en una celda para editar o comentar
               </LegendItem>
+            ) : (
+              readOnlyReason && (
+                <LegendItem>
+                  <Lock size={13} />
+                  Solo lectura — {readOnlyReason}
+                </LegendItem>
+              )
             )}
+            <LegendItem>
+              <PanelRight size={13} />
+              «ficha» abre el rendimiento de la cuenta
+            </LegendItem>
             <span className="ml-auto font-mono">{accountCount} cuentas</span>
           </footer>
         </>

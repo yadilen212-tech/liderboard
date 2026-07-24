@@ -84,8 +84,8 @@ export interface AnalyticsSource {
 }
 
 /**
- * The four axes mirror the dimensions `CompareBar` already offers (cuentas, centros, años,
- * periodos), so translating the UI selection into a query stays mechanical.
+ * The four axes mirror what the PyG filter bar marks (cuentas, centros, años, periodos), so
+ * translating the filter selection into a query stays mechanical.
  */
 export interface SeriesQuery {
   codes: string[];
